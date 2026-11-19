@@ -1094,13 +1094,24 @@ async fn balances_initialize_list_and_view_fields() {
         r.json["message"],
         "Balance already initialized for this year"
     );
-    // Karyawan tanpa baris user → pelanggaran FK → 500 (Prisma: P2003).
-    let r = app
-        .post("/leave-policies/balances/initialize/987654321")
-        .token(&fx.admin.token)
-        .send()
+    // Bukan anggota aktif company peminta (tidak ada / company lain) → 404, tanpa baris saldo.
+    let outsider = employee(&app, fx2.id, &format!("Outsider {}", fx2.id)).await;
+    for target in [987_654_321, outsider] {
+        let r = app
+            .post(&format!("/leave-policies/balances/initialize/{target}"))
+            .token(&fx.admin.token)
+            .send()
+            .await;
+        r.assert_status(404).assert_no_sql_error();
+        assert_eq!(r.json["message"], "User not found in this company");
+    }
+    let leaked: i64 = app
+        .scalar(&format!(
+            r#"SELECT COUNT(*) FROM "leaveBalance" WHERE "userId" = {outsider} AND "companyId" = {}"#,
+            fx.id
+        ))
         .await;
-    assert_eq!(r.status.as_u16(), 500);
+    assert_eq!(leaked, 0);
 
     // Daftar tahun depan: override, tier, libur terjadwal.
     let (e2, e3) = (
@@ -1209,6 +1220,39 @@ async fn balances_initialize_list_and_view_fields() {
         .send()
         .await;
     assert_eq!(r.json["meta"]["total"], 3);
+    // Anggota yang sudah keluar: baris saldonya tetap ada tetapi tidak tampil (count & data).
+    app.exec(&format!(
+        r#"UPDATE "userCompany" SET status = 0 WHERE "userId" = {e2} AND "companyId" = {}"#,
+        fx.id
+    ))
+    .await;
+    let r = app
+        .get(&format!("/leave-policies/balances?year={next}"))
+        .token(&fx.admin.token)
+        .send()
+        .await;
+    r.assert_status(200).assert_no_sql_error();
+    assert_eq!(r.json["meta"]["total"], 2);
+    assert!(
+        r.json["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["userId"] != e2)
+    );
+    let r = app
+        .get(&format!(
+            "/leave-policies/balances?year={next}&search=BRAVO"
+        ))
+        .token(&fx.admin.token)
+        .send()
+        .await;
+    assert_eq!(r.json["meta"]["total"], 0);
+    app.exec(&format!(
+        r#"UPDATE "userCompany" SET status = 1 WHERE "userId" = {e2} AND "companyId" = {}"#,
+        fx.id
+    ))
+    .await;
     // Tier mempengaruhi entitlement bila TIER_BASED.
     put_policy(&app, &fx, json!({"entitlementType": "TIER_BASED"}))
         .await

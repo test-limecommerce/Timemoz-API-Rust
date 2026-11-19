@@ -108,7 +108,12 @@ pub async fn get_balances(
         )
         .push_bind(company_id)
         .push(" AND b.year = ")
-        .push_bind(year);
+        .push_bind(year)
+        // Baris saldo bisa milik user yang sudah keluar / pindah company; yang tampil
+        // hanya anggota aktif company ini.
+        .push(r#" AND EXISTS (SELECT 1 FROM "userCompany" uc WHERE uc."userId" = b."userId" AND uc."companyId" = "#)
+        .push_bind(company_id)
+        .push(" AND uc.status = 1)");
         if let Some(p) = &pattern {
             qb.push(" AND (u.name ILIKE ")
                 .push_bind(p.clone())
@@ -251,6 +256,17 @@ pub async fn initialize_balance(
     let year = query.year()?.unwrap_or_else(current_year);
     let company_id = company_of(&state, &ctx).await?;
     let user_id = parse_id(&user_id)?;
+    // Tanpa cek ini admin bisa membuat saldo di company-nya untuk user company lain.
+    let member: Option<i32> = sqlx::query_scalar(
+        r#"SELECT 1 FROM "userCompany" WHERE "userId" = $1 AND "companyId" = $2 AND status = 1 LIMIT 1"#,
+    )
+    .bind(user_id)
+    .bind(company_id)
+    .fetch_optional(&state.db)
+    .await?;
+    if member.is_none() {
+        return Err(ApiError::not_found("User not found in this company"));
+    }
     if find_balance(&state.db, user_id, company_id, year)
         .await?
         .is_some()
