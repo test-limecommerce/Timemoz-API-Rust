@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selamat Datang di Timemoz! Konfirmasi Email Kamu</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        h1 {
+            color: #202124;
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 32px;
+            margin: 0 0 16px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 20px;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+        }
+        .detail-table td {
+            padding: 8px 0;
+            font-size: 14px;
+            line-height: 21px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+        .detail-table td:first-child {
+            color: #70757a;
+            width: 45%;
+        }
+        .detail-table td:last-child {
+            font-weight: 500;
+            color: #202124;
+        }
+        .notice-box {
+            background-color: #fef7e0;
+            border: 1px solid #fdd663;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 24px 0;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 14px;
+            color: #3c4043;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <p>Selamat datang di Timemoz!</p>
+            <br />
+            <p>Kamu sekarang punya 14 hari akses penuh tanpa batas ke semua fitur, tanpa perlu kartu kredit. Kami akan mengingatkan sebelum masanya habis.</p>
+            <br />
+            <p>Kamu cuma perlu 3 langkah lagi menuju hari kerja yang lebih produktif:</p>
+            <ol>
+                <li>Konfirmasi akun-mu.</li>
+                <li>Download aplikasinya.</li>
+                <li>Mulai task pertama.</li>
+            </ol>
+            <br />
+            <p>Email login kamu: {{email}}</p>
+            <div class="button-container">
+                <a href="{{url}}" class="button">Download Timemoz untuk Desktop</a>
+            </div>
+            <br />
+            <p>FAQ Teknis Singkat:</p>
+            <p>Apakah Timemoz akan memperlambat komputer saya?</p>
+            <p>Tidak. Timemoz dibuat sangat ringan, jadi kamu tetap bisa coding, desain, atau render tanpa lag.</p>
+            <br />
+            <p>Berapa banyak komputer yang bisa saya pakai?</p>
+            <p>Kamu bisa install Timemoz di sebanyak mungkin komputer yang kamu perlukan.</p>
+            <br />
+            <p>Bagaimana kalau koneksi internet saya putus?</p>
+            <p>Timemoz tetap mencatat waktu secara offline. Data kamu tersimpan aman di device dan otomatis sync begitu online lagi.</p>
+            <br />
+            <p>Bagaimana cara mulai?</p>
+            <p>Tinggal pilih project dari daftar lalu klik tombol "Play". Kamu bisa pindah antar project dengan mudah sepanjang hari.</p>
+            <br />
+            <p>Butuh bantuan?</p>
+            <p>Kami siap membantu. Cek Support Site kami atau mulai Live Chat dengan tim kami.</p>
+            <br />
+            <p>Selamat bergabung!</p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

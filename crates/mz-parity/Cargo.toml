@@ -1,0 +1,26 @@
+[package]
+name = "mz-parity"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+description = "Harness uji paritas: putar request yang sama ke Mudah-API (Node) dan mudah-rs (Rust), bandingkan respons."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mz-parity"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+jsonwebtoken.workspace = true
+regex.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+hex.workspace = true
+anyhow.workspace = true

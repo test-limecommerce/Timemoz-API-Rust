@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Team Summary</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 32px 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 20px;
+            width: 125px;
+            height: auto;
+        }
+        .header-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #202124;
+            margin: 0 0 4px;
+        }
+        .header-subtitle {
+            font-size: 13px;
+            color: #70757a;
+            margin: 0 0 4px;
+        }
+        .week-over-week {
+            font-size: 13px;
+            color: #1a73e8;
+            margin: 0 0 24px;
+            font-weight: 500;
+        }
+        .stats-strip {
+            display: table;
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 8px;
+            margin: 0 -8px 24px;
+        }
+        .stat-box {
+            display: table-cell;
+            background-color: #f8f9fa;
+            border: 1px solid #e8eaed;
+            border-radius: 6px;
+            padding: 14px 16px;
+            text-align: center;
+            width: 33%;
+        }
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #202124;
+            display: block;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: #70757a;
+            display: block;
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #70757a;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 24px 0 10px;
+        }
+        table.team-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        table.team-table th {
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: #70757a;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 6px 8px;
+            border-bottom: 2px solid #e8eaed;
+        }
+        table.team-table td {
+            padding: 9px 8px;
+            border-bottom: 1px solid #f1f3f4;
+            color: #202124;
+            vertical-align: middle;
+        }
+        table.team-table tr:last-child td {
+            border-bottom: none;
+        }
+        .activity-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .dot-green { background-color: #22c55e; }
+        .dot-yellow { background-color: #eab308; }
+        .dot-red { background-color: #ef4444; }
+        .more-rows {
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+            padding: 8px 0;
+            font-style: italic;
+        }
+        .flags-box {
+            background-color: #fff8e1;
+            border: 1px solid #fdd835;
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin: 20px 0;
+        }
+        .flag-item {
+            font-size: 13px;
+            color: #5f4000;
+            padding: 3px 0;
+        }
+        .flag-item::before {
+            content: "⚑ ";
+        }
+        .no-activity-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dadce0;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            color: #70757a;
+            font-size: 14px;
+            margin: 20px 0;
+        }
+        .cta-button {
+            display: block;
+            width: fit-content;
+            background-color: #1a73e8;
+            color: #ffffff !important;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 10px 24px;
+            border-radius: 4px;
+            margin: 24px auto 0;
+            text-align: center;
+        }
+        .divider {
+            height: 1px;
+            background-color: #e8eaed;
+            margin: 24px 0;
+        }
+        .footer {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .footer a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <p class="header-title">Weekly Team Summary</p>
+            <p class="header-subtitle">{{companyName}} &nbsp;&bull;&nbsp; {{startDateFormatted}} – {{endDateFormatted}}</p>
+            {{#if weekOverWeekChange}}
+            <p class="week-over-week">&#8593; Team hours: {{totalHours}} ({{weekOverWeekChange}})</p>
+            {{/if}}
+
+            {{#if noActivity}}
+            <div class="no-activity-box">
+                No activity tracked this week. Your team may be on leave or tracking hasn't started yet.
+            </div>
+            {{else}}
+
+            <div class="stats-strip">
+                <div class="stat-box">
+                    <span class="stat-value">{{totalHours}}</span>
+                    <span class="stat-label">Total Hours</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">{{activeMembers}}/{{totalMembers}}</span>
+                    <span class="stat-label">Active Members</span>
+                </div>
+                <div class="stat-box">
+                    {{#if topProject}}
+                    <span class="stat-value" style="font-size:14px;">{{topProject.name}}</span>
+                    <span class="stat-label">Top Project ({{topProject.hours}})</span>
+                    {{else}}
+                    <span class="stat-value">—</span>
+                    <span class="stat-label">Top Project</span>
+                    {{/if}}
+                </div>
+            </div>
+
+            <p class="section-title">Team Activity</p>
+            <table class="team-table">
+                <thead>
+                    <tr>
+                        <th>Member</th>
+                        <th>Hours</th>
+                        <th>Primary Project</th>
+                        <th style="text-align:center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each teamRows}}
+                    <tr>
+                        <td>{{this.name}}</td>
+                        <td>{{this.hours}}</td>
+                        <td>{{this.primaryProject}}</td>
+                        <td style="text-align:center;">
+                            {{#if this.isGreen}}
+                            <span class="activity-dot dot-green"></span>
+                            {{else if this.isYellow}}
+                            <span class="activity-dot dot-yellow"></span>
+                            {{else}}
+                            <span class="activity-dot dot-red"></span>
+                            {{/if}}
+                        </td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+            {{#if teamRowsExtra}}
+            <p class="more-rows">and {{teamRowsExtra}} more member(s)...</p>
+            {{/if}}
+
+            {{#if hasFlags}}
+            <div class="flags-box">
+                {{#each flags}}
+                <p class="flag-item" style="margin:0 0 4px;">{{this.text}}</p>
+                {{/each}}
+            </div>
+            {{/if}}
+
+            {{/if}}
+
+            <div class="divider"></div>
+
+            <a href="{{dashboardUrl}}" class="cta-button">View Details in Timemoz</a>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 8px 0 4px;"><a href="{{settingsUrl}}">Change email settings</a></p>
+            <p style="margin: 0; font-size: 11px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; font-size: 11px;">© 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

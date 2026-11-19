@@ -1,0 +1,32 @@
+[package]
+name = "mz-int-gcal"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-audit.workspace = true
+mz-int-common.workspace = true
+axum.workspace = true
+http.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+reqwest.workspace = true
+fred.workspace = true
+mz-jobs.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+mz-testkit.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

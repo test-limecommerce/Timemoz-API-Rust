@@ -1,0 +1,35 @@
+[package]
+name = "mz-files"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "sync"] }
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+jsonwebtoken.workspace = true
+reqwest = { workspace = true, features = ["stream"] }
+sha2.workspace = true
+hex.workspace = true
+hmac = "0.12"
+base64 = "0.22"
+ring = "0.17"
+pem = "3"
+url = "2"
+unicode-normalization = "0.1"
+tokio-util = { version = "0.7", features = ["io"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

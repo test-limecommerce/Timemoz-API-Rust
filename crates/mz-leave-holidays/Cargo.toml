@@ -1,0 +1,27 @@
+[package]
+name = "mz-leave-holidays"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-operator.workspace = true
+mz-admin-jobs.workspace = true
+mz-leave.workspace = true
+axum = { workspace = true, features = ["multipart"] }
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+mz-testkit.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+fred.workspace = true
+uuid.workspace = true

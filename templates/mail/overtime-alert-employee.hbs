@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Limit Alert</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 16px;
+        }
+        .alert-badge {
+            display: inline-block;
+            background-color: #d97706;
+            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 24px;
+        }
+        .summary-box {
+            background-color: #fffbf0;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            padding: 20px 24px;
+            margin: 20px 0;
+        }
+        .summary-row {
+            font-size: 13px;
+            padding: 7px 0;
+            border-bottom: 1px solid #fde68a;
+            overflow: hidden;
+        }
+        .summary-row:last-child {
+            border-bottom: none;
+            padding-top: 12px;
+        }
+        .summary-label {
+            color: #70757a;
+            display: inline-block;
+            width: 140px;
+        }
+        .summary-value {
+            color: #202124;
+            font-weight: 500;
+        }
+        .overtime-row .summary-label {
+            font-weight: 600;
+            color: #202124;
+            font-size: 14px;
+        }
+        .overtime-row .summary-value {
+            font-weight: 700;
+            font-size: 14px;
+            color: #d97706;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <p>Hi <strong>{{employeeName}}</strong>,</p>
+
+            <p>This is a heads-up that you have exceeded your <strong>{{limitType}} work limit</strong> at <strong>{{companyName}}</strong>.</p>
+
+            <span class="alert-badge">&#9888; {{limitType}} Limit Exceeded</span>
+
+            <div class="summary-box">
+                <div class="summary-row">
+                    <span class="summary-label">Period</span>
+                    <span class="summary-value">{{date}}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Hours Worked</span>
+                    <span class="summary-value">{{workedHours}} hrs</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">{{limitType}} Limit</span>
+                    <span class="summary-value">{{limitHours}} hrs</span>
+                </div>
+                <div class="summary-row overtime-row">
+                    <span class="summary-label">Overtime</span>
+                    <span class="summary-value">+{{overtimeHours}} hrs</span>
+                </div>
+            </div>
+
+            <p>Please make sure this is accounted for. If you believe this is an error, please reach out to your manager.</p>
+
+            <div class="divider"></div>
+
+            <p>Best regards,<br>The Timemoz Team</p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">© 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

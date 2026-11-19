@@ -1,0 +1,29 @@
+[package]
+name = "mz-timelines"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-audit.workspace = true
+mz-int-clickup.workspace = true
+mz-int-jira.workspace = true
+mz-overtime = { path = "../mz-overtime" }
+mz-projects = { path = "../mz-projects" }
+mz-files = { path = "../mz-files" }
+tokio.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+rand.workspace = true

@@ -1,0 +1,26 @@
+[package]
+name = "mz-projects"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-jobs = { path = "../mz-jobs" }
+tokio.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+fred.workspace = true
+
+[dev-dependencies]
+mz-testkit = { path = "../mz-testkit" }

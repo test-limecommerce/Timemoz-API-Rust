@@ -1,0 +1,64 @@
+# Contoh unit systemd untuk produksi tanpa Docker.
+#
+# Pasang:
+#   sudo useradd --system --home /opt/mudah-rs --shell /usr/sbin/nologin mudah
+#   sudo mkdir -p /opt/mudah-rs/logs
+#   sudo cp target/release/mudah-rs /opt/mudah-rs/   (lihat catatan glibc di bawah)
+#   sudo cp -r templates /opt/mudah-rs/              (MAIL_TEMPLATE_DIR=templates/mail)
+#   sudo cp .env /opt/mudah-rs/.env && sudo chmod 600 /opt/mudah-rs/.env
+#   sudo chown -R mudah:mudah /opt/mudah-rs
+#   sudo cp deploy/mudah-rs.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now mudah-rs
+#
+# Cek:
+#   systemctl status mudah-rs
+#   journalctl -u mudah-rs -f              (baris "batas file terbuka" muncul saat start)
+#   cat /proc/$(systemctl show -p MainPID --value mudah-rs)/limits | grep "open files"
+#
+# Binary dibuild di mesin dengan glibc yang sama atau lebih lama dari server
+# (paling aman: build di OS yang sama dengan server). Bila tidak, binary gagal
+# start dengan "GLIBC_2.xx not found".
+
+[Unit]
+Description=mudah-rs (Timemoz API, Rust)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=mudah
+Group=mudah
+# `.env` dibaca aplikasi sendiri (dotenvy) dari folder ini. Sengaja tidak
+# memakai EnvironmentFile=: systemd tidak membuang komentar di akhir baris
+# (mis. `RS_PORT=3100   # ...`) sehingga nilainya jadi salah.
+WorkingDirectory=/opt/mudah-rs
+ExecStart=/opt/mudah-rs/mudah-rs
+Restart=always
+RestartSec=2
+
+# Satu koneksi klien = satu file terbuka. Bawaan systemd hanya 1024: saat
+# ±1000 desktop tersambung bersamaan server gagal dengan "Too many open files".
+# Aplikasi juga menaikkan batas lunak ke batas keras ini saat start.
+LimitNOFILE=65535
+
+# SIGTERM → berhenti menerima request, selesaikan request berjalan, lalu
+# tunggu tugas latar sampai SHUTDOWN_DRAIN_SECS (bawaan 8 dtk).
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Pengamanan dasar. Aplikasi hanya menulis ke logs/ (RS_LOG_DIR) dan /tmp.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/mudah-rs/logs
+
+[Install]
+WantedBy=multi-user.target

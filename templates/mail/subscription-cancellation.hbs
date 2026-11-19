@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription Cancelled</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        h1 {
+            color: #202124;
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 32px;
+            margin: 0 0 16px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 20px;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+        }
+        .detail-table td {
+            padding: 8px 0;
+            font-size: 14px;
+            line-height: 21px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+        .detail-table td:first-child {
+            color: #70757a;
+            width: 45%;
+        }
+        .detail-table td:last-child {
+            font-weight: 500;
+            color: #202124;
+        }
+        .notice-box {
+            background-color: #fef7e0;
+            border: 1px solid #fdd663;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 24px 0;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 14px;
+            color: #3c4043;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <p>Hi <strong>{{name}}</strong>,</p>
+            <p>This email confirms that your Timemoz subscription has been cancelled.</p>
+            <br />
+            <p>What you need to know:</p>
+            <p>End of Cycle: You will continue to have access to your current features until the end of your billing period on {{date}}.</p>
+            <p>Data Safety: We will keep your project history and timesheets saved for a limited time in case you decide to return. After that, they will be permanently removed to protect your team's privacy.</p>
+            <p>Reactivating: If this was a mistake or your needs change, you can reactivate your account with one click from your dashboard.</p>
+            <br />
+            <p>One quick favor?</p>
+            <p>We are constantly trying to improve Timemoz for remote teams like yours. If you have 30 seconds, could you reply and let us know why you’re leaving? Whether it was a missing feature or a change in team size, your feedback means a lot to me personally.</p>
+            <br />
+            <p>Thank you for giving us a try. We wish you and your team the very best.</p>
+            <br />
+            <p>Best,</p>
+            <p>{{founderName}}</p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

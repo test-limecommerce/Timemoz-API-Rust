@@ -1,0 +1,36 @@
+[package]
+name = "mz-visit-forms"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-pdfkit.workspace = true
+mz-sales-geo.workspace = true
+mz-audit.workspace = true
+mz-files.workspace = true
+mz-jobs.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+futures.workspace = true
+regex.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+flate2 = "1"
+
+[dev-dependencies]
+mz-testkit.workspace = true
+tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

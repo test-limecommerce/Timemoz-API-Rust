@@ -1,0 +1,15 @@
+# Tambahan untuk container/docker-compose.yaml Mudah-API:
+#   docker compose -f container/docker-compose.yaml -f <path>/deploy/docker-compose.rs.yaml up -d
+services:
+  api-rs:
+    image: 'mudah/api-rs:latest'
+    container_name: api-rs
+    env_file: ../.env
+    environment:
+      RS_PORT: 3100
+    depends_on:
+      - db
+      - redis
+    networks:
+      vpcbr:
+        ipv4_address: 10.5.2.22

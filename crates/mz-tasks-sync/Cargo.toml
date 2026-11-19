@@ -1,0 +1,26 @@
+[package]
+name = "mz-tasks-sync"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-operator = { path = "../mz-operator" }
+mz-jobs = { path = "../mz-jobs" }
+mz-timesheets = { path = "../mz-timesheets" }
+axum.workspace = true
+sqlx.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+mz-testkit = { path = "../mz-testkit" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+uuid.workspace = true

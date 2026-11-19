@@ -1,0 +1,75 @@
+# HANYA untuk docker-compose LOKAL Mudah-API. Prod memakai nginx: lihat deploy/nginx-strangler.conf.
+# Contoh routing strangler fig untuk Traefik v1 (format container/traefik.toml
+# di Mudah-API). Path yang sudah di-port diarahkan ke mudah-rs dengan priority
+# LEBIH TINGGI dari frontend Node (19). Aktifkan satu per satu.
+#
+# PERHATIAN: PathPrefix di Traefik v1 mencocokkan awalan string, jadi
+# "PathPrefix:/trackings" TIDAK mengenai "/tracking-timelines" (tidak sama
+# awalannya), tetapi selalu periksa route Node yang namanya berawalan sama
+# sebelum menambah aturan baru.
+
+[frontends]
+  # Fase 3 langkah 1 — trackings (tidak menulis model ber-audit).
+  [frontends.rs_trackings]
+  priority = 40
+  backend = "rs_server"
+  passHostHeader = true
+    [frontends.rs_trackings.routes.r]
+    rule = "Host:api.local.mudah.co.id;PathPrefix:/trackings"
+
+  # Fase 3 langkah 2 — projects (aktifkan setelah uji paritas lolos).
+  # [frontends.rs_projects]
+  # priority = 40
+  # backend = "rs_server"
+  # passHostHeader = true
+  #   [frontends.rs_projects.routes.r]
+  #   rule = "Host:api.local.mudah.co.id;PathPrefix:/projects"
+
+  # /auth/me saja dulu (baca-saja). Route auth/users yang MENULIS model ber-audit
+  # baru boleh dialihkan setelah mz-audit selesai (plan/PLAN.md Fase 2).
+  # [frontends.rs_auth_me]
+  # priority = 41
+  # backend = "rs_server"
+  # passHostHeader = true
+  #   [frontends.rs_auth_me.routes.r]
+  #   rule = "Host:api.local.mudah.co.id;Path:/auth/me"
+
+  # Lembur HR (22 route /v1/overtime/*, mz-overtime::hr). Hanya 5 controller Node
+  # ini yang berawalan /v1/overtime/. Aktifkan bersama: approvals & requests saling
+  # mengunci lewat advisory lock yang sama dengan Node, jadi berjalan berdampingan aman,
+  # tetapi email/nudge dari kedua sisi harus dicek dulu di uji paritas.
+  # Paritas 2026-11-16: suite `65-overtime-mutations.json` 291 kasus, 0 FAIL/ERROR.
+  # Belum teruji: email Mailtrap nyata, balapan konkuren, tick otomatis.
+  [frontends.rs_overtime]
+  priority = 40
+  backend = "rs_server"
+  passHostHeader = true
+    [frontends.rs_overtime.routes.r]
+    rule = "Host:api.local.mudah.co.id;PathPrefix:/v1/overtime/"
+
+  # Admin screenshot (operator, 2 route di mz-timeconfig::admin_screenshots). Path persis:
+  # route /admin/* lain masih Node. Belum diuji harness paritas; job berjalan di proses Rust.
+  # [frontends.rs_admin_screenshot]
+  # priority = 41
+  # backend = "rs_server"
+  # passHostHeader = true
+  #   [frontends.rs_admin_screenshot.routes.r]
+  #   rule = "Host:api.local.mudah.co.id;Path:/admin/screenshot/compress,/admin/screenshot/purge"
+
+  # Integrasi (74 route: mz-int-{clickup,jira,discord,gcal} + mz-integrations). BELUM diuji harness
+  # paritas dan belum dicoba dengan akun ClickUp/Jira/Discord/Google sungguhan. Callback OAuth &
+  # webhook ikut pindah lewat path ini. Cron integrasi tetap di Node sampai MZ_JOBS diset.
+  # [frontends.rs_integrations]
+  # priority = 42
+  # backend = "rs_server"
+  # passHostHeader = true
+  #   [frontends.rs_integrations.routes.r]
+  #   rule = "Host:api.local.mudah.co.id;PathPrefix:/integrations/,/google-calendar/"
+
+[backends]
+  [backends.rs_server]
+    [backends.rs_server.healthcheck]
+    path = "/health"
+    interval = "10s"
+    [backends.rs_server.servers.server1]
+    url = "http://10.5.2.22:3100"

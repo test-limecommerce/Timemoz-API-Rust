@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Tracking Report</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        h1 {
+            color: #202124;
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 32px;
+            margin: 0 0 16px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 20px;
+        }
+        .report-info {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        .report-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .report-info-label {
+            color: #70757a;
+            font-size: 12px;
+        }
+        .report-info-value {
+            color: #202124;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .date-badge {
+            display: inline-block;
+            background-color: #e8f0fe;
+            color: #1a73e8;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            margin: 4px 4px 4px 0;
+        }
+        .message-box {
+            background-color: #fafafa;
+            border-left: 4px solid #1a73e8;
+            padding: 16px;
+            margin: 24px 0;
+            font-style: italic;
+        }
+        .attachment-notice {
+            background-color: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 24px 0;
+            display: flex;
+            align-items: center;
+        }
+        .attachment-icon {
+            margin-right: 12px;
+            font-size: 24px;
+        }
+        .attachment-text {
+            font-size: 13px;
+            color: #2e7d32;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <h1>Time Tracking Report</h1>
+
+            <p>Hello,</p>
+
+            <p><strong>{{senderName}}</strong> from <strong>{{companyName}}</strong> has shared a time tracking report with you.</p>
+
+            <div class="report-info">
+                <p style="margin-bottom: 12px; color: #70757a; font-size: 12px; text-transform: uppercase;">Report Period</p>
+                <span class="date-badge">{{startDate}}</span>
+                <span style="color: #70757a;">to</span>
+                <span class="date-badge">{{endDate}}</span>
+            </div>
+
+            {{#if message}}
+            <div class="message-box">
+                <p style="margin: 0;">{{message}}</p>
+            </div>
+            {{/if}}
+
+            <div class="attachment-notice">
+                <span class="attachment-icon">&#128206;</span>
+                <span class="attachment-text">The detailed PDF report is attached to this email.</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <p style="font-size: 12px; color: #70757a;">This report was generated automatically by Timemoz. Please review the attached PDF for detailed time tracking information including project breakdowns and team member summaries.</p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">© 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

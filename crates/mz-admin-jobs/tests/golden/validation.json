@@ -1,0 +1,659 @@
+{
+ "backup": [
+  {
+   "input": {},
+   "errors": [
+    "companyUuid must be a UUID",
+    "reason must be longer than or equal to 5 characters",
+    "reason must be a string"
+   ]
+  },
+  {
+   "input": {
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "reason": "Backup rutin"
+   },
+   "ok": {
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "reason": "Backup rutin"
+   }
+  },
+  {
+   "input": {
+    "companyUuid": "x",
+    "skipHeavy": "yes",
+    "redactSecrets": 1,
+    "reason": "abc",
+    "extra": 1
+   },
+   "errors": [
+    "property extra should not exist",
+    "companyUuid must be a UUID",
+    "skipHeavy must be a boolean value",
+    "redactSecrets must be a boolean value",
+    "reason must be longer than or equal to 5 characters"
+   ]
+  },
+  {
+   "input": {
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "reason": "   abcd  "
+   },
+   "errors": [
+    "reason must be longer than or equal to 5 characters"
+   ]
+  },
+  {
+   "input": {
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "reason": 5
+   },
+   "errors": [
+    "reason must be longer than or equal to 5 and shorter than or equal to 500 characters",
+    "reason must be a string"
+   ]
+  },
+  {
+   "input": {
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "skipHeavy": null,
+    "reason": "Backup rutin"
+   },
+   "ok": {
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "skipHeavy": null,
+    "reason": "Backup rutin"
+   }
+  },
+  {
+   "input": {
+    "companyUuid": "11111111-1111-1111-1111-111111111111",
+    "reason": "Backup rutin"
+   },
+   "errors": [
+    "companyUuid must be a UUID"
+   ]
+  },
+  {
+   "input": [
+    1,
+    2
+   ],
+   "errors": [
+    "property 0 should not exist",
+    "property 1 should not exist",
+    "companyUuid must be a UUID",
+    "reason must be longer than or equal to 5 characters",
+    "reason must be a string"
+   ]
+  }
+ ],
+ "restore": [
+  {
+   "input": {},
+   "errors": [
+    "backupJobUuid must be a UUID",
+    "mode must be one of the following values: clone",
+    "users must be one of the following values: reuse, insert",
+    "dryRun must be a boolean value",
+    "reason must be longer than or equal to 5 characters",
+    "reason must be a string"
+   ]
+  },
+  {
+   "input": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "clone",
+    "users": "reuse",
+    "dryRun": true,
+    "reason": "Uji restore"
+   },
+   "ok": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "clone",
+    "users": "reuse",
+    "dryRun": true,
+    "reason": "Uji restore"
+   }
+  },
+  {
+   "input": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "exact",
+    "users": "x",
+    "dryRun": "true",
+    "reason": "Uji restore",
+    "rename": "  ",
+    "usernameSuffix": "a b"
+   },
+   "errors": [
+    "mode must be one of the following values: clone",
+    "rename must be longer than or equal to 1 characters",
+    "users must be one of the following values: reuse, insert",
+    "usernameSuffix must match /^[A-Za-z0-9._-]+$/ regular expression",
+    "dryRun must be a boolean value"
+   ]
+  },
+  {
+   "input": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "clone",
+    "users": "insert",
+    "dryRun": false,
+    "reason": "Uji restore",
+    "rename": "  PT Baru  ",
+    "usernameSuffix": ".copy"
+   },
+   "ok": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "clone",
+    "users": "insert",
+    "dryRun": false,
+    "reason": "Uji restore",
+    "rename": "PT Baru",
+    "usernameSuffix": ".copy"
+   }
+  },
+  {
+   "input": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "clone",
+    "users": "insert",
+    "dryRun": false,
+    "reason": "Uji restore",
+    "rename": 5,
+    "usernameSuffix": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "errors": [
+    "rename must be longer than or equal to 1 and shorter than or equal to 200 characters",
+    "rename must be a string",
+    "usernameSuffix must be shorter than or equal to 30 characters"
+   ]
+  },
+  {
+   "input": {
+    "backupJobUuid": "11111111-1111-4111-8111-111111111111",
+    "mode": "clone",
+    "users": "insert",
+    "dryRun": false,
+    "reason": "Uji restore",
+    "usernameSuffix": ""
+   },
+   "errors": [
+    "usernameSuffix must match /^[A-Za-z0-9._-]+$/ regular expression",
+    "usernameSuffix must be longer than or equal to 1 characters"
+   ]
+  }
+ ],
+ "merge": [
+  {
+   "input": {},
+   "errors": [
+    "targetCompanyUuid must be a UUID",
+    "legacyCompanyId must not be greater than 2147483647",
+    "legacyCompanyId must not be less than 1",
+    "legacyCompanyId must be an integer number",
+    "retention must be one of the following values: UNLIMITED, ACCEPT",
+    "dryRun must be a boolean value",
+    "reason must be longer than or equal to 5 characters",
+    "reason must be a string"
+   ]
+  },
+  {
+   "input": {
+    "targetCompanyUuid": "11111111-1111-4111-8111-111111111111",
+    "legacyCompanyId": 4,
+    "retention": "ACCEPT",
+    "dryRun": true,
+    "reason": "Merge data lama"
+   },
+   "ok": {
+    "targetCompanyUuid": "11111111-1111-4111-8111-111111111111",
+    "legacyCompanyId": 4,
+    "retention": "ACCEPT",
+    "dryRun": true,
+    "reason": "Merge data lama"
+   }
+  },
+  {
+   "input": {
+    "targetCompanyUuid": "11111111-1111-4111-8111-111111111111",
+    "legacyCompanyId": "4",
+    "retention": "NO",
+    "dryRun": 1,
+    "reason": "Merge data lama",
+    "since": "2026-02-30",
+    "until": "2026-1-01",
+    "preferLegacy": "x"
+   },
+   "errors": [
+    "legacyCompanyId must not be greater than 2147483647",
+    "legacyCompanyId must not be less than 1",
+    "legacyCompanyId must be an integer number",
+    "preferLegacy must be a boolean value",
+    "retention must be one of the following values: UNLIMITED, ACCEPT",
+    "since must be a valid ISO 8601 date string",
+    "until must be a valid ISO 8601 date string",
+    "until must match /^\\d{4}-\\d{2}-\\d{2}$/ regular expression",
+    "dryRun must be a boolean value"
+   ]
+  },
+  {
+   "input": {
+    "targetCompanyUuid": "11111111-1111-4111-8111-111111111111",
+    "legacyCompanyId": 0,
+    "retention": "UNLIMITED",
+    "dryRun": true,
+    "reason": "Merge data lama",
+    "since": "2026-10-12T00:00:00Z"
+   },
+   "errors": [
+    "legacyCompanyId must not be less than 1",
+    "since must match /^\\d{4}-\\d{2}-\\d{2}$/ regular expression"
+   ]
+  },
+  {
+   "input": {
+    "targetCompanyUuid": "11111111-1111-4111-8111-111111111111",
+    "legacyCompanyId": 2147483648,
+    "retention": "UNLIMITED",
+    "dryRun": true,
+    "reason": "Merge data lama",
+    "since": "2026-10-12",
+    "until": "2026-11-01"
+   },
+   "errors": [
+    "legacyCompanyId must not be greater than 2147483647"
+   ]
+  },
+  {
+   "input": {
+    "targetCompanyUuid": "11111111-1111-4111-8111-111111111111",
+    "legacyCompanyId": 1.5,
+    "retention": "UNLIMITED",
+    "dryRun": true,
+    "reason": "Merge data lama"
+   },
+   "errors": [
+    "legacyCompanyId must be an integer number"
+   ]
+  }
+ ],
+ "jobsQuery": [
+  {
+   "input": "",
+   "ok": {
+    "pageNumber": 1,
+    "itemsPerPage": 25
+   }
+  },
+  {
+   "input": "type=BACKUP_COMPANY&status=DONE&companyUuid=11111111-1111-4111-8111-111111111111&pageNumber=2&itemsPerPage=10",
+   "ok": {
+    "pageNumber": 2,
+    "itemsPerPage": 10,
+    "type": "BACKUP_COMPANY",
+    "status": "DONE",
+    "companyUuid": "11111111-1111-4111-8111-111111111111"
+   }
+  },
+  {
+   "input": "type=X&status=Y&companyUuid=z&pageNumber=0&itemsPerPage=101&foo=1",
+   "errors": [
+    "property foo should not exist",
+    "type must be one of the following values: BACKUP_COMPANY, RESTORE_COMPANY, MERGE_COMPANY, APPLY_HOLIDAYS",
+    "status must be one of the following values: QUEUED, RUNNING, DONE, FAILED",
+    "companyUuid must be a UUID",
+    "pageNumber must not be less than 1",
+    "itemsPerPage must not be greater than 100"
+   ]
+  },
+  {
+   "input": "pageNumber=abc&itemsPerPage=1.5",
+   "errors": [
+    "pageNumber must not be less than 1",
+    "pageNumber must be an integer number",
+    "itemsPerPage must be an integer number"
+   ]
+  },
+  {
+   "input": "pageNumber=&itemsPerPage=",
+   "errors": [
+    "pageNumber must not be less than 1",
+    "itemsPerPage must not be less than 1"
+   ]
+  },
+  {
+   "input": "type=BACKUP_COMPANY&type=MERGE_COMPANY",
+   "errors": [
+    "type must be one of the following values: BACKUP_COMPANY, RESTORE_COMPANY, MERGE_COMPANY, APPLY_HOLIDAYS"
+   ]
+  },
+  {
+   "input": "pageNumber[a]=1",
+   "errors": [
+    "pageNumber must not be less than 1",
+    "pageNumber must be an integer number"
+   ]
+  },
+  {
+   "input": "itemsPerPage=1e2",
+   "ok": {
+    "pageNumber": 1,
+    "itemsPerPage": 100
+   }
+  }
+ ],
+ "holidayCreate": [
+  {
+   "input": {},
+   "errors": [
+    "date must be YYYY-MM-DD",
+    "name must be longer than or equal to 1 characters",
+    "name must be a string",
+    "type must be one of the following values: NATIONAL_HOLIDAY, JOINT_LEAVE",
+    "isEstimated must be a boolean value"
+   ]
+  },
+  {
+   "input": {
+    "date": "2027-03-10",
+    "name": "Nyepi",
+    "type": "NATIONAL_HOLIDAY",
+    "isEstimated": false
+   },
+   "ok": {
+    "date": "2027-03-10",
+    "name": "Nyepi",
+    "type": "NATIONAL_HOLIDAY",
+    "isEstimated": false
+   }
+  },
+  {
+   "input": {
+    "date": " 2027-3-10 ",
+    "name": "  ",
+    "type": "X",
+    "isEstimated": "no",
+    "reason": "abc"
+   },
+   "errors": [
+    "date must be YYYY-MM-DD",
+    "name must be longer than or equal to 1 characters",
+    "type must be one of the following values: NATIONAL_HOLIDAY, JOINT_LEAVE",
+    "isEstimated must be a boolean value",
+    "reason must be longer than or equal to 5 characters"
+   ]
+  },
+  {
+   "input": {
+    "date": "2027-03-10",
+    "name": "Nyepi",
+    "type": "JOINT_LEAVE",
+    "isEstimated": true,
+    "reason": "  Cuti bersama  "
+   },
+   "ok": {
+    "date": "2027-03-10",
+    "name": "Nyepi",
+    "type": "JOINT_LEAVE",
+    "isEstimated": true,
+    "reason": "Cuti bersama"
+   }
+  },
+  {
+   "input": {
+    "date": 5,
+    "name": 5,
+    "type": null,
+    "isEstimated": null
+   },
+   "errors": [
+    "date must be YYYY-MM-DD",
+    "name must be longer than or equal to 1 and shorter than or equal to 200 characters",
+    "name must be a string",
+    "type must be one of the following values: NATIONAL_HOLIDAY, JOINT_LEAVE",
+    "isEstimated must be a boolean value"
+   ]
+  }
+ ],
+ "holidayUpdate": [
+  {
+   "input": {},
+   "ok": {}
+  },
+  {
+   "input": {
+    "date": "2027-03-11"
+   },
+   "ok": {
+    "date": "2027-03-11"
+   }
+  },
+  {
+   "input": {
+    "date": "x",
+    "name": "",
+    "type": "X",
+    "isEstimated": 1,
+    "reason": "a",
+    "other": 2
+   },
+   "errors": [
+    "property other should not exist",
+    "date must be YYYY-MM-DD",
+    "name must be longer than or equal to 1 characters",
+    "type must be one of the following values: NATIONAL_HOLIDAY, JOINT_LEAVE",
+    "isEstimated must be a boolean value",
+    "reason must be longer than or equal to 5 characters"
+   ]
+  },
+  {
+   "input": {
+    "name": null,
+    "reason": null
+   },
+   "ok": {
+    "name": null,
+    "reason": null
+   }
+  }
+ ],
+ "holidayDelete": [
+  {
+   "input": {},
+   "errors": [
+    "reason must be longer than or equal to 5 characters",
+    "reason must be a string"
+   ]
+  },
+  {
+   "input": {
+    "reason": "Hapus duplikat"
+   },
+   "ok": {
+    "reason": "Hapus duplikat"
+   }
+  },
+  {
+   "input": {
+    "reason": "ab",
+    "x": 1
+   },
+   "errors": [
+    "property x should not exist",
+    "reason must be longer than or equal to 5 characters"
+   ]
+  }
+ ],
+ "holidayList": [
+  {
+   "input": "",
+   "errors": [
+    "year must not be greater than 2100",
+    "year must not be less than 2000",
+    "year must be an integer number"
+   ]
+  },
+  {
+   "input": "year=2027",
+   "ok": {
+    "year": 2027
+   }
+  },
+  {
+   "input": "year=1999",
+   "errors": [
+    "year must not be less than 2000"
+   ]
+  },
+  {
+   "input": "year=abc&x=1",
+   "errors": [
+    "property x should not exist",
+    "year must not be greater than 2100",
+    "year must not be less than 2000",
+    "year must be an integer number"
+   ]
+  },
+  {
+   "input": "year=2027.5",
+   "errors": [
+    "year must be an integer number"
+   ]
+  },
+  {
+   "input": "year=2101",
+   "errors": [
+    "year must not be greater than 2100"
+   ]
+  }
+ ],
+ "invoiceQuery": [
+  {
+   "input": "",
+   "ok": {
+    "pageNumber": 1,
+    "itemsPerPage": 25
+   }
+  },
+  {
+   "input": "status=PAID&provider=manual&companyUuid=11111111-1111-4111-8111-111111111111&from=2026-01-01&to=2026-02-01&search=%20INV%20&pageNumber=2&itemsPerPage=5",
+   "ok": {
+    "pageNumber": 2,
+    "itemsPerPage": 5,
+    "status": "PAID",
+    "provider": "manual",
+    "companyUuid": "11111111-1111-4111-8111-111111111111",
+    "from": "2026-01-01",
+    "to": "2026-02-01",
+    "search": "INV"
+   }
+  },
+  {
+   "input": "status=X&provider=y&companyUuid=z&from=abc&to=def&search=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&pageNumber=0&itemsPerPage=0&bar=1",
+   "errors": [
+    "property bar should not exist",
+    "status must be one of the following values: UNPAID, PAID, CANCELLED, EXPIRED",
+    "provider must be one of the following values: paypal, manual, midtrans",
+    "companyUuid must be a UUID",
+    "from must be a valid ISO 8601 date string",
+    "to must be a valid ISO 8601 date string",
+    "search must be shorter than or equal to 50 characters",
+    "pageNumber must not be less than 1",
+    "itemsPerPage must not be less than 1"
+   ]
+  },
+  {
+   "input": "from=2026-03-01&to=2026-02-01",
+   "errors": [
+    "from must not be later than to"
+   ]
+  },
+  {
+   "input": "from=2026-03-01T10:00:00Z&to=2026-03-01",
+   "errors": [
+    "from must not be later than to"
+   ]
+  },
+  {
+   "input": "search=",
+   "ok": {
+    "pageNumber": 1,
+    "itemsPerPage": 25,
+    "search": ""
+   }
+  },
+  {
+   "input": "status=PAID&status=UNPAID",
+   "errors": [
+    "status must be one of the following values: UNPAID, PAID, CANCELLED, EXPIRED"
+   ]
+  }
+ ],
+ "reason": [
+  {
+   "input": {},
+   "errors": [
+    "reason must be longer than or equal to 5 characters",
+    "reason must be a string"
+   ]
+  },
+  {
+   "input": {
+    "reason": "Void karena salah"
+   },
+   "ok": {
+    "reason": "Void karena salah"
+   }
+  },
+  {
+   "input": {
+    "reason": "  ab  ",
+    "x": 1
+   },
+   "errors": [
+    "property x should not exist",
+    "reason must be longer than or equal to 5 characters"
+   ]
+  }
+ ],
+ "optionalReason": [
+  {
+   "input": {},
+   "ok": {}
+  },
+  {
+   "input": {
+    "reason": "Kirim ulang"
+   },
+   "ok": {
+    "reason": "Kirim ulang"
+   }
+  },
+  {
+   "input": {
+    "reason": "ab"
+   },
+   "errors": [
+    "reason must be longer than or equal to 5 characters"
+   ]
+  },
+  {
+   "input": {
+    "reason": null
+   },
+   "ok": {
+    "reason": null
+   }
+  },
+  {
+   "input": {
+    "y": 1
+   },
+   "errors": [
+    "property y should not exist"
+   ]
+  }
+ ]
+}

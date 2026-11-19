@@ -1,0 +1,29 @@
+[package]
+name = "mz-companies"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-audit.workspace = true
+mz-files.workspace = true
+mz-overtime.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+fred.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+mz-testkit.workspace = true
+tokio.workspace = true
+uuid.workspace = true

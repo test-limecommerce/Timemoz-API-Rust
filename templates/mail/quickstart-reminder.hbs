@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 20px;
+        }
+        .steps {
+            margin: 0 0 20px;
+            padding-left: 20px;
+        }
+        .steps li {
+            font-size: 14px;
+            line-height: 21px;
+            margin-bottom: 8px;
+        }
+        .notice-box {
+            background-color: #fef7e0;
+            border: 1px solid #fdd663;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 24px 0;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 14px;
+            color: #3c4043;
+        }
+        /* Kedua tombol sama lebar: lebar tetap, menyusut di layar sempit.
+           Style penting juga ditulis inline karena sebagian klien email
+           membuang <style>. */
+        .cta {
+            display: block;
+            margin: 0 auto;
+            width: 280px;
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 12px 18px;
+            border-radius: 5px;
+            font-size: 16px;
+            line-height: 20px;
+            text-align: center;
+            color: #fff;
+            text-decoration: none;
+        }
+        .cta-primary { background: #1a73e8; }
+        .cta-secondary { background: #25d366; }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .preheader {
+            display: none !important;
+            visibility: hidden;
+            opacity: 0;
+            color: transparent;
+            height: 0;
+            width: 0;
+            max-height: 0;
+            max-width: 0;
+            overflow: hidden;
+            mso-hide: all;
+            font-size: 1px;
+            line-height: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="preheader">{{preheader}}</div>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+            <p>Halo {{firstName}}.</p>
+            {{#each paragraphs}}
+            <p>{{this}}</p>
+            {{/each}}
+            {{#if steps}}
+            <ol class="steps">
+                {{#each steps}}
+                <li>{{this}}</li>
+                {{/each}}
+            </ol>
+            {{/if}}
+            {{#if closing}}
+            <p>{{closing}}</p>
+            {{/if}}
+            {{#if notice}}
+            <div class="notice-box">
+                <p><strong>{{notice}}</strong></p>
+            </div>
+            {{/if}}
+            {{#if waSupportNumber}}
+            <p>Ada kendala? Chat tim kami di WhatsApp: {{waSupportNumber}}</p>
+            {{/if}}
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td align="center">
+                        <!-- Triple-stache: kedua URL dirakit MailService dari env/konstanta
+                             (bukan input user), dan escape Handlebars mengubah `=` jadi
+                             `&#x3D;` di dalam href. -->
+                        <a href="{{{ctaUrl}}}" class="cta cta-primary" style="display: block; margin: 0 auto; width: 280px; max-width: 100%; box-sizing: border-box; padding: 12px 18px; border-radius: 5px; background: #1a73e8; color: #fff; font-size: 16px; line-height: 20px; text-align: center; text-decoration: none;">{{ctaLabel}}</a>
+                        {{#if whatsappUrl}}
+                        <div style="height: 12px; line-height: 12px; font-size: 12px;">&nbsp;</div>
+                        <a href="{{{whatsappUrl}}}" class="cta cta-secondary" style="display: block; margin: 0 auto; width: 280px; max-width: 100%; box-sizing: border-box; padding: 12px 18px; border-radius: 5px; background: #25d366; color: #fff; font-size: 16px; line-height: 20px; text-align: center; text-decoration: none;">Chat via WhatsApp</a>
+                        {{/if}}
+                    </td>
+                </tr>
+            </table>
+            <p style="margin-top: 24px;">Salam hangat,<br /><strong>Tim Timemoz</strong></p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

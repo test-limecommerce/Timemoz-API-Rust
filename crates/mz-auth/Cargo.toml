@@ -1,0 +1,40 @@
+[package]
+name = "mz-auth"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-jobs = { path = "../mz-jobs" }
+futures.workspace = true
+mz-audit = { path = "../mz-audit" }
+mz-account.workspace = true
+mz-paypal.workspace = true
+tokio.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+fred.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+rust_decimal.workspace = true
+sha2.workspace = true
+hmac = "0.12"
+base64 = "0.22"
+subtle = "2"
+hex.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+mz-testkit = { path = "../mz-testkit" }

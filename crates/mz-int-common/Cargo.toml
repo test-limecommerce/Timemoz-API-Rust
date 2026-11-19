@@ -1,0 +1,23 @@
+[package]
+name = "mz-int-common"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+chrono.workspace = true
+jsonwebtoken.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+mz-testkit.workspace = true

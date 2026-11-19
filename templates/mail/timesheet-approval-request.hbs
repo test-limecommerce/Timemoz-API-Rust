@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timesheet Approval Request</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        h1 {
+            color: #202124;
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 32px;
+            margin: 0 0 16px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 20px;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+        }
+        .detail-table td {
+            padding: 8px 0;
+            font-size: 14px;
+            line-height: 21px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+        .detail-table td:first-child {
+            color: #70757a;
+            width: 45%;
+        }
+        .detail-table td:last-child {
+            font-weight: 500;
+            color: #202124;
+        }
+        .notice-box {
+            background-color: #fef7e0;
+            border: 1px solid #fdd663;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 24px 0;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 14px;
+            color: #3c4043;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 24px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <p>Hello <strong>{{approverName}}</strong>,</p>
+            <br />
+            <p><strong>{{employeeName}}</strong> has submitted a timesheet for your review.</p>
+            <p>Here are the details:</p>
+
+            <table class="detail-table">
+                <tr>
+                    <td>Employee Name</td>
+                    <td>{{employeeName}}</td>
+                </tr>
+                <tr>
+                    <td>Period</td>
+                    <td>{{periodStart}} – {{periodEnd}}</td>
+                </tr>
+                <tr>
+                    <td>Pay Period Type</td>
+                    <td>{{payPeriodType}}</td>
+                </tr>
+                <tr>
+                    <td>Total Hours</td>
+                    <td>{{totalHours}} hours</td>
+                </tr>
+                {{#if totalAmount}}
+                <tr>
+                    <td>Total Amount</td>
+                    <td>{{currency}} {{totalAmount}}</td>
+                </tr>
+                {{/if}}
+                {{#if notes}}
+                <tr>
+                    <td>Notes</td>
+                    <td>{{notes}}</td>
+                </tr>
+                {{/if}}
+            </table>
+
+            <div style="text-align: center; margin: 28px 0 8px; display: flex; justify-content: center; gap: 12px !important;">
+                <a href="{{approveUrl}}" style="display: inline-block; background-color: #1a73e8; color: #ffffff; text-decoration: none; padding: 12px 36px; border-radius: 4px; font-size: 14px; font-weight: 500;">Approve</a>
+                <a href="{{rejectUrl}}" style="display: inline-block; background-color: #b3261e; color: #ffffff; text-decoration: none; padding: 12px 36px; border-radius: 4px; font-size: 14px; font-weight: 500;">Reject</a>
+            </div>
+
+            <div class="notice-box">
+                <p>These buttons are valid for 7 days. You can also log in to the Timemoz dashboard to review timesheets from the Timesheet Approval section.</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <p style="margin: 0;">Thank you for your attention.</p>
+            <br />
+            <p style="margin: 0;">Best regards,<br /><strong>Timemoz</strong></p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

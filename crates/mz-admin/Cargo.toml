@@ -1,0 +1,32 @@
+[package]
+name = "mz-admin"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-audit.workspace = true
+mz-operator = { path = "../mz-operator" }
+mz-account = { path = "../mz-account" }
+mz-auth = { path = "../mz-auth" }
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+fred.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+bcrypt.workspace = true
+tower.workspace = true
+mz-testkit = { path = "../mz-testkit" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

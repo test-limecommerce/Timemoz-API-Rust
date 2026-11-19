@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Akun Anda Sudah Aktif</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        h1 {
+            color: #202124;
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 32px;
+            margin: 0 0 16px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 20px;
+        }
+        .steps {
+            margin: 0 0 24px;
+            padding-left: 20px;
+        }
+        .steps li {
+            font-size: 14px;
+            line-height: 21px;
+            margin-bottom: 12px;
+        }
+        .notice-box {
+            background-color: #fef7e0;
+            border: 1px solid #fdd663;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 24px 0;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 14px;
+            color: #3c4043;
+        }
+        .button-container {
+            background: #25d366;
+            width: max-content;
+            padding: 10px 18px;
+            border-radius: 5px;
+            font-size: 16px;
+            color: #fff;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+        .preheader {
+            display: none !important;
+            visibility: hidden;
+            opacity: 0;
+            color: transparent;
+            height: 0;
+            width: 0;
+            max-height: 0;
+            max-width: 0;
+            overflow: hidden;
+            mso-hide: all;
+            font-size: 1px;
+            line-height: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="preheader">Setup geofence pertama cuma butuh 5 menit.</div>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+            <h1>Akun Anda Sudah Aktif</h1>
+            <p>Halo {{firstName}},</p>
+            <p>Akun Timemoz Anda sudah aktif, tanpa kartu kredit, tanpa kontrak mengikat.</p>
+            <p>Biar hari pertama langsung kelihatan hasilnya, mulai dari 3 langkah ini:</p>
+            <ol class="steps">
+                <li><strong>Set geofence outlet pertama</strong> : radius 12m, tiap check-in sales otomatis tervalidasi lokasi + foto GPS.</li>
+                <li><strong>Buat rencana kunjungan (beat plan)</strong> : rute tim tersusun, overdue visit langsung ketahuan di dashboard.</li>
+                <li><strong>Aktifkan mode offline</strong> : data kunjungan tetap masuk walau tim ada di blank spot sinyal, auto-sync begitu online.</li>
+            </ol>
+            <div class="notice-box">
+                <p>Semua data tim Anda terenkripsi AES-256, tersimpan di server Tier-3 Jakarta, sesuai UU PDP No 27/2022.</p>
+            </div>
+            <p>Butuh bantuan setup? Tim kami siap dampingi langsung.</p>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td align="center">
+                        <div class="button-container">
+                            <!-- Triple-stache: URL-nya konstanta di MailService (bukan input user),
+                                 dan escape Handlebars mengubah `=` jadi `&#x3D;` di dalam href. -->
+                            <a href="{{{whatsappUrl}}}" class="button" style="color: #fff; text-decoration: none;">👉 Lanjut Konsultasi via WhatsApp</a>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            <p style="margin-top: 24px;">Salam,<br />Tim Timemoz</p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

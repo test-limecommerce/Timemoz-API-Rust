@@ -1,0 +1,18 @@
+<p>Hi {{ name }},</p>
+{{#if isCostBudget}}
+<p>
+  Project <strong>{{ projectName }}</strong> has reached its cost budget.
+</p>
+<p>Burned: <strong>${{ burnedCost }}</strong> of <strong>${{ budgetAmount }}</strong></p>
+{{else}}
+<p>
+  Project <strong>{{ projectName }}</strong> has reached its budget
+  ({{ burnedHours }}h of {{ budgetHours }}h).
+</p>
+{{/if}}
+{{#if isStopped}}
+<p><strong>Tracking has been stopped for team members.</strong></p>
+{{else}}
+<p>Tracking is still allowed (Alert Only mode).</p>
+{{/if}}
+<p><a href="{{ appUrl }}">Review in Timemoz →</a></p>

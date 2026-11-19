@@ -1,0 +1,15 @@
+<p>Hi {{ name }},</p>
+{{#if isCostBudget}}
+<p>
+  Project <strong>{{ projectName }}</strong> has used
+  <strong>{{ percentUsed }}%</strong> of its cost budget.
+</p>
+<p>Burned: <strong>${{ burnedCost }}</strong> of <strong>${{ budgetAmount }}</strong></p>
+{{else}}
+<p>
+  Project <strong>{{ projectName }}</strong> has used
+  <strong>{{ percentUsed }}%</strong> of its budget
+  ({{ burnedHours }}h of {{ budgetHours }}h).
+</p>
+{{/if}}
+<p><a href="{{ appUrl }}">Review in Timemoz →</a></p>

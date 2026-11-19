@@ -1,0 +1,28 @@
+[package]
+name = "mz-admin-invoice"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-operator.workspace = true
+mz-admin-jobs = { path = "../mz-admin-jobs" }
+tokio = { workspace = true, features = ["sync"] }
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+mz-testkit.workspace = true
+tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

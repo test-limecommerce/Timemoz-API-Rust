@@ -1,0 +1,124 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+
+[workspace.dependencies]
+mz-core = { path = "crates/mz-core" }
+mz-account = { path = "crates/mz-account" }
+mz-auth = { path = "crates/mz-auth" }
+mz-users = { path = "crates/mz-users" }
+mz-projects = { path = "crates/mz-projects" }
+mz-trackings = { path = "crates/mz-trackings" }
+mz-files = { path = "crates/mz-files" }
+mz-audit = { path = "crates/mz-audit" }
+mz-timelines = { path = "crates/mz-timelines" }
+mz-screenshots = { path = "crates/mz-screenshots" }
+mz-timesheets = { path = "crates/mz-timesheets" }
+mz-timeconfig = { path = "crates/mz-timeconfig" }
+mz-testkit = { path = "crates/mz-testkit" }
+mz-jobs = { path = "crates/mz-jobs" }
+mz-overtime = { path = "crates/mz-overtime" }
+mz-int-common = { path = "crates/mz-int-common" }
+mz-int-clickup = { path = "crates/mz-int-clickup" }
+mz-int-jira = { path = "crates/mz-int-jira" }
+mz-int-discord = { path = "crates/mz-int-discord" }
+mz-int-gcal = { path = "crates/mz-int-gcal" }
+mz-integrations = { path = "crates/mz-integrations" }
+mz-misc = { path = "crates/mz-misc" }
+mz-settings = { path = "crates/mz-settings" }
+mz-table-fields = { path = "crates/mz-table-fields" }
+mz-companies = { path = "crates/mz-companies" }
+mz-roles = { path = "crates/mz-roles" }
+mz-divisions = { path = "crates/mz-divisions" }
+mz-operator = { path = "crates/mz-operator" }
+mz-admin = { path = "crates/mz-admin" }
+mz-admin-company = { path = "crates/mz-admin-company" }
+mz-admin-jobs = { path = "crates/mz-admin-jobs" }
+mz-admin-invoice = { path = "crates/mz-admin-invoice" }
+mz-admin-mcp = { path = "crates/mz-admin-mcp" }
+mz-admin-misc = { path = "crates/mz-admin-misc" }
+mz-paypal = { path = "crates/mz-paypal" }
+mz-billing = { path = "crates/mz-billing" }
+mz-paypal-api = { path = "crates/mz-paypal-api" }
+mz-billing-tasks = { path = "crates/mz-billing-tasks" }
+mz-invoices = { path = "crates/mz-invoices" }
+mz-mcp-api = { path = "crates/mz-mcp-api" }
+mz-leave = { path = "crates/mz-leave" }
+mz-attendance = { path = "crates/mz-attendance" }
+mz-sales-geo = { path = "crates/mz-sales-geo" }
+mz-leave-config = { path = "crates/mz-leave-config" }
+mz-leaves = { path = "crates/mz-leaves" }
+mz-leave-holidays = { path = "crates/mz-leave-holidays" }
+mz-visit-forms = { path = "crates/mz-visit-forms" }
+mz-customers = { path = "crates/mz-customers" }
+mz-products = { path = "crates/mz-products" }
+mz-store-visits = { path = "crates/mz-store-visits" }
+mz-orders = { path = "crates/mz-orders" }
+mz-tasks-sync = { path = "crates/mz-tasks-sync" }
+mz-pdfkit = { path = "crates/mz-pdfkit" }
+
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip", "compression-br", "limit", "set-header", "trace", "catch-panic", "timeout", "request-id"] }
+http = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono", "uuid", "rust_decimal", "json"] }
+fred = { version = "10", default-features = false, features = ["i-std", "i-scripts", "i-pubsub", "subscriber-client"] }
+moka = { version = "0.12", features = ["future"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+chrono-tz = "0.10"
+uuid = { version = "1", features = ["v4", "serde"] }
+rust_decimal = { version = "1", features = ["serde-str"] }
+jsonwebtoken = "9"
+bcrypt = "0.17"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.9"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+dotenvy = "0.15"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+mimalloc = "0.1"
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+futures = "0.3"
+regex = "1"
+handlebars = "6"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "unwind"
+opt-level = 3
+
+# Debug info dev diperkecil (2026-11-16): binary dev penuh ±500 MB/buah dan `target/`
+# sempat memenuhi disk (68 GB). Nomor baris di backtrace tetap ada.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1
+debug = false

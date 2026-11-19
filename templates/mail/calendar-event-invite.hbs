@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Invitation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        h1 {
+            color: #202124;
+            font-size: 22px;
+            font-weight: 500;
+            line-height: 30px;
+            margin: 0 0 16px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 16px;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+        }
+        .detail-table td {
+            padding: 8px 0;
+            font-size: 14px;
+            line-height: 21px;
+            border-bottom: 1px solid #f1f3f4;
+            vertical-align: top;
+        }
+        .detail-table td:first-child {
+            color: #70757a;
+            width: 30%;
+        }
+        .detail-table td:last-child {
+            font-weight: 500;
+            color: #202124;
+        }
+        .notice-box {
+            background-color: #e8f0fe;
+            border: 1px solid #aecbfa;
+            border-radius: 4px;
+            padding: 16px;
+            margin: 24px 0 0;
+        }
+        .notice-box p {
+            margin: 0;
+            font-size: 13px;
+            color: #3c4043;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>You're invited: {{title}}</h1>
+            <p>Hi {{attendeeName}},</p>
+            <p>{{organizerName}} invited you to an event at {{companyName}}. The calendar invite is attached to this email — open it to add the event to your calendar.</p>
+
+            <table class="detail-table">
+                <tr>
+                    <td>When</td>
+                    <td>{{startAt}} &ndash; {{endAt}}</td>
+                </tr>
+                {{#if location}}
+                <tr>
+                    <td>Where</td>
+                    <td>{{location}}</td>
+                </tr>
+                {{/if}}
+                {{#if description}}
+                <tr>
+                    <td>Details</td>
+                    <td>{{description}}</td>
+                </tr>
+                {{/if}}
+            </table>
+
+            <div class="notice-box">
+                <p>This event was created in {{companyName}}'s workspace and is not currently synced with Google Calendar.</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

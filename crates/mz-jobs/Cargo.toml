@@ -1,0 +1,18 @@
+[package]
+name = "mz-jobs"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+fred.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+futures.workspace = true

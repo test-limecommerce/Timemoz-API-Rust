@@ -1,0 +1,93 @@
+[package]
+name = "mz-server"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mudah-rs"
+path = "src/main.rs"
+
+[dependencies]
+mz-core.workspace = true
+mz-audit.workspace = true
+mz-auth.workspace = true
+mz-users.workspace = true
+mz-projects.workspace = true
+mz-trackings.workspace = true
+mz-timelines.workspace = true
+mz-screenshots.workspace = true
+mz-timesheets.workspace = true
+mz-timeconfig.workspace = true
+mz-jobs.workspace = true
+mz-overtime.workspace = true
+mz-int-clickup.workspace = true
+mz-int-jira.workspace = true
+mz-int-discord.workspace = true
+mz-int-gcal.workspace = true
+mz-integrations.workspace = true
+mz-misc.workspace = true
+mz-settings.workspace = true
+mz-table-fields.workspace = true
+mz-companies.workspace = true
+mz-roles.workspace = true
+mz-divisions.workspace = true
+mz-admin.workspace = true
+mz-admin-company.workspace = true
+mz-admin-jobs.workspace = true
+mz-admin-invoice.workspace = true
+mz-admin-mcp.workspace = true
+mz-admin-misc.workspace = true
+mz-tasks-sync.workspace = true
+mz-billing.workspace = true
+mz-paypal-api.workspace = true
+mz-billing-tasks.workspace = true
+mz-invoices.workspace = true
+mz-mcp-api.workspace = true
+mz-leave.workspace = true
+mz-attendance.workspace = true
+mz-sales-geo.workspace = true
+mz-leave-config.workspace = true
+mz-leaves.workspace = true
+mz-leave-holidays.workspace = true
+mz-visit-forms.workspace = true
+mz-customers.workspace = true
+mz-products.workspace = true
+mz-store-visits.workspace = true
+mz-orders.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+http.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+dotenvy.workspace = true
+anyhow.workspace = true
+mimalloc.workspace = true
+sqlx.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+tower = { workspace = true }
+http-body-util = "0.1"
+# Dekompresi respons di it_export_compression (versi sama dengan Cargo.lock lewat tower-http).
+flate2 = "1"
+brotli-decompressor = "6"
+jsonwebtoken = { workspace = true }
+mz-testkit = { workspace = true }
+bcrypt = { workspace = true }
+mz-account = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+fred = { workspace = true }

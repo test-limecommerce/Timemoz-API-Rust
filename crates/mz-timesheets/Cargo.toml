@@ -1,0 +1,29 @@
+[package]
+name = "mz-timesheets"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-account.workspace = true
+tokio.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+chrono-tz.workspace = true
+mz-jobs = { path = "../mz-jobs" }
+mz-screenshots = { path = "../mz-screenshots" }
+
+[dev-dependencies]
+mz-testkit = { path = "../mz-testkit" }
+tokio = { workspace = true, features = ["test-util"] }

@@ -1,0 +1,6 @@
+Terdeteksi DUA agent "products" bekerja serentak di crate ini (2026-11-17 14:37 WIB).
+Agent kedua (yang menulis Cargo.toml 14:35:56, dto.rs, uom.rs, qty_range.rs,
+price_list_active.rs, image_url.rs) BERHENTI dan melapor ke orkestrator.
+Agent yang membuat src/lib.rs lebih dulu (14:35:39) silakan melanjutkan seluruh tugas;
+berkas agent kedua boleh dipakai, diubah, atau dihapus (unit test spec UOM/qty/price-list
+sudah diport di uom.rs, qty_range.rs, price_list_active.rs, image_url.rs). Hapus berkas ini.

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice #{{invoiceNumber}}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Google Sans', Roboto, Segoe UI, sans-serif;
+            background-color: #f8f9fa;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.30), 0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .logo {
+            margin-bottom: 24px;
+            width: 125px;
+            height: auto;
+        }
+        h1 {
+            color: #202124;
+            font-size: 24px;
+            font-weight: 400;
+            line-height: 32px;
+            margin: 0 0 8px;
+        }
+        .invoice-number {
+            font-size: 14px;
+            color: #70757a;
+            margin: 0 0 24px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 21px;
+            margin: 0 0 16px;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+        .detail-table td {
+            padding: 12px 0;
+            font-size: 14px;
+            line-height: 21px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+        .detail-table td:first-child {
+            color: #70757a;
+            width: 40%;
+        }
+        .detail-table td:last-child {
+            color: #202124;
+            font-weight: 500;
+            text-align: right;
+        }
+        .detail-table tr:last-child td {
+            border-bottom: none;
+        }
+        .total-row td {
+            border-top: 2px solid #dadce0 !important;
+            border-bottom: none !important;
+            padding-top: 16px;
+        }
+        .total-row td:last-child {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a73e8;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .status-paid {
+            background-color: #e6f4ea;
+            color: #137333;
+        }
+        .status-unpaid {
+            background-color: #fce8e6;
+            color: #c5221f;
+        }
+        .button-container {
+            margin: 32px 0 0;
+            text-align: center;
+        }
+        .button {
+            background-color: #1a73e8;
+            color: #ffffff !important;
+            padding: 10px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 14px;
+            display: inline-block;
+        }
+        .divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 24px 0;
+        }
+        .note {
+            font-size: 12px;
+            color: #70757a;
+            line-height: 18px;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 12px;
+            color: #70757a;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <img src="https://timemoz.com/logo.png" alt="Timemoz Logo" class="logo">
+
+            <h1>Subscription Invoice</h1>
+            <p class="invoice-number">#{{invoiceNumber}}</p>
+
+            <p>Hi <strong>{{name}}</strong>,</p>
+            <p>Thank you for subscribing to Timemoz. Here are your invoice details:</p>
+
+            <table class="detail-table">
+                <tr>
+                    <td>Plan</td>
+                    <td>{{tierName}}</td>
+                </tr>
+                <tr>
+                    <td>Billing Period</td>
+                    <td>{{period}}</td>
+                </tr>
+                <tr>
+                    <td>Next Billing Date</td>
+                    <td>{{expiredAt}}</td>
+                </tr>
+                {{#if paymentDueDate}}
+                <tr>
+                    <td>Payment Due</td>
+                    <td>{{paymentDueDate}}</td>
+                </tr>
+                {{/if}}
+                <tr class="total-row">
+                    <td>Total</td>
+                    <td>${{totalPrice}}</td>
+                </tr>
+            </table>
+
+            {{#if paymentDueDate}}
+            <p><strong>Please complete payment by {{paymentDueDate}}.</strong> If this invoice is still unpaid after that date, the add-on users it covers will be deactivated. New users cannot be invited while this invoice is unpaid.</p>
+            {{/if}}
+
+            {{#if paymentUrl}}
+            <div class="button-container">
+                <a href="{{paymentUrl}}" class="button">Complete Payment</a>
+            </div>
+            {{/if}}
+
+            <div class="divider"></div>
+
+            <p class="note">This invoice was generated automatically. If you have any questions about your billing, please contact our support team at <a href="mailto:support@timemoz.com">support@timemoz.com</a>.</p>
+        </div>
+
+        <div class="footer">
+            <p style="margin: 0; padding: 0; font-size: 12px;">Jl. Mampang Prapatan Raya no 17c, Mampang Prapatan, Jakarta Selatan, Indonesia, 12790</p>
+            <p style="margin: 0; padding: 0; font-size: 12px;">&copy; 2026 Timemoz, Jakarta, Indonesia</p>
+        </div>
+    </div>
+</body>
+</html>

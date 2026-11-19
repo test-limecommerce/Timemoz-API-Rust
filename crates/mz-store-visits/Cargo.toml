@@ -1,0 +1,42 @@
+[package]
+name = "mz-store-visits"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-attendance.workspace = true
+mz-audit.workspace = true
+mz-files.workspace = true
+mz-jobs.workspace = true
+mz-table-fields.workspace = true
+mz-sales-geo.workspace = true
+mz-customers.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+futures.workspace = true
+regex.workspace = true
+rust_xlsxwriter = "0.90"
+sha2.workspace = true
+base64 = "0.22"
+rand.workspace = true
+
+[dev-dependencies]
+mz-testkit.workspace = true
+fred.workspace = true
+tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+zip = { version = "4", default-features = false, features = ["deflate"] }

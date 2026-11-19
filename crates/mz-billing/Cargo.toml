@@ -1,0 +1,37 @@
+[package]
+name = "mz-billing"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-pdfkit.workspace = true
+mz-audit.workspace = true
+mz-files.workspace = true
+mz-operator.workspace = true
+mz-paypal.workspace = true
+# `reapply_plan_override_after_tier_sync` + `update_company` (tulisan company ber-audit).
+mz-admin-company.workspace = true
+# `validate::{RawBody, RawPath, optional_reason}` (ADMIN_VALIDATION_PIPE).
+mz-admin-jobs.workspace = true
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+flate2 = "1"
+
+[dev-dependencies]
+mz-testkit.workspace = true
+tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

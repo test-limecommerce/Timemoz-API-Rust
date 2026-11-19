@@ -1,0 +1,35 @@
+[package]
+name = "mz-screenshots"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mz-core.workspace = true
+mz-files = { path = "../mz-files" }
+mz-trackings.workspace = true
+mz-jobs = { path = "../mz-jobs" }
+tokio = { workspace = true, features = ["fs", "io-util", "sync"] }
+axum.workspace = true
+http.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+rust_xlsxwriter = "0.90"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp"] }
+flate2 = "1"
+url = "2"
+
+[dev-dependencies]
+mz-testkit = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

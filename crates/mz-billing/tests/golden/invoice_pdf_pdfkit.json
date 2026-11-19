@@ -1,0 +1,3326 @@
+{
+"paid_paypal": {
+"pages": 1,
+"input": {
+"invoiceNumber": "INV-17112026-1763366400",
+"status": "PAID",
+"createdAt": "2026-11-17T08:00:00Z",
+"expiredAt": "2026-11-24T08:00:00Z",
+"customerName": "Ana Admin",
+"customerEmail": "ana@qa.co",
+"companyName": "PT QA Divisi",
+"companyPhone": "0800000002",
+"companyAddress": "Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta 12190",
+"items": [
+{
+"description": "Monthly Subscription - 5 user(s) @ $1.5/user",
+"quantity": 5,
+"unitPrice": 1.5,
+"totalPrice": 7.5
+}
+],
+"subPrice": 7.5,
+"taxPrice": 0.83,
+"feePrice": 0.25,
+"totalPrice": 8.58,
+"paymentProvider": "paypal",
+"currency": "USD",
+"billingInterval": "YEAR",
+"quantity": 5,
+"pricePerUser": 1.5,
+"paymentUrl": "https://www.paypal.com/checkout/abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz",
+"paidAt": "2026-11-18T01:00:00Z"
+},
+"expected": [
+[
+"T",
+0,
+"www.timemoz.com  |  support@timemoz.com",
+"Helvetica",
+8.5,
+50.0,
+743.79
+],
+[
+"T",
+0,
+"INVOICE",
+"Helvetica-Bold",
+22.0,
+455.92,
+776.09
+],
+[
+"T",
+0,
+"#INV-17112026-1763366400",
+"Helvetica",
+10.0,
+417.11,
+757.71
+],
+[
+"T",
+0,
+"PAID",
+"Helvetica-Bold",
+9.0,
+489.98,
+734.43
+],
+[
+"T",
+0,
+"Issue date",
+"Helvetica",
+9.0,
+418.75,
+709.43
+],
+[
+"T",
+0,
+"17/11/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+709.43
+],
+[
+"T",
+0,
+"BILL TO",
+"Helvetica-Bold",
+9.0,
+50.0,
+657.43
+],
+[
+"T",
+0,
+"Ana Admin",
+"Helvetica-Bold",
+11.0,
+50.0,
+640.99
+],
+[
+"T",
+0,
+"ana@qa.co",
+"Helvetica",
+10.0,
+50.0,
+626.71
+],
+[
+"T",
+0,
+"COMPANY",
+"Helvetica-Bold",
+9.0,
+317.64,
+657.43
+],
+[
+"T",
+0,
+"PT QA Divisi",
+"Helvetica-Bold",
+11.0,
+317.64,
+640.99
+],
+[
+"T",
+0,
+"0800000002",
+"Helvetica",
+10.0,
+317.64,
+626.71
+],
+[
+"T",
+0,
+"Jl. Sudirman No. 1, Jakarta Selatan, DKI Jakarta ",
+"Helvetica",
+10.0,
+317.64,
+611.71
+],
+[
+"T",
+0,
+"12190",
+"Helvetica",
+10.0,
+317.64,
+600.15
+],
+[
+"T",
+0,
+"PAYPAL",
+"Helvetica-Bold",
+8.0,
+65.02,
+598.15
+],
+[
+"T",
+0,
+"YEARLY",
+"Helvetica-Bold",
+8.0,
+129.26,
+598.15
+],
+[
+"T",
+0,
+"DESCRIPTION",
+"Helvetica-Bold",
+9.0,
+60.0,
+554.43
+],
+[
+"T",
+0,
+"QTY",
+"Helvetica-Bold",
+9.0,
+335.53,
+554.43
+],
+[
+"T",
+0,
+"UNIT PRICE",
+"Helvetica-Bold",
+9.0,
+417.6,
+554.43
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+9.0,
+506.81,
+554.43
+],
+[
+"T",
+0,
+"Monthly Subscription - 5 user(s) @ $1.5/user",
+"Helvetica",
+10.0,
+60.0,
+519.71
+],
+[
+"T",
+0,
+"5",
+"Helvetica",
+10.0,
+342.01,
+519.71
+],
+[
+"T",
+0,
+"$1.50",
+"Helvetica",
+10.0,
+443.59,
+519.71
+],
+[
+"T",
+0,
+"$7.50",
+"Helvetica-Bold",
+10.0,
+510.26,
+519.71
+],
+[
+"T",
+0,
+"Subtotal",
+"Helvetica",
+10.0,
+340.28,
+466.71
+],
+[
+"T",
+0,
+"$7.50",
+"Helvetica",
+10.0,
+505.26,
+466.71
+],
+[
+"T",
+0,
+"Tax (11%)",
+"Helvetica",
+10.0,
+340.28,
+444.71
+],
+[
+"T",
+0,
+"$0.83",
+"Helvetica",
+10.0,
+505.26,
+444.71
+],
+[
+"T",
+0,
+"Fee",
+"Helvetica",
+10.0,
+340.28,
+422.71
+],
+[
+"T",
+0,
+"$0.25",
+"Helvetica",
+10.0,
+505.26,
+422.71
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+12.0,
+340.28,
+387.27
+],
+[
+"T",
+0,
+"$8.58",
+"Helvetica-Bold",
+14.0,
+495.25,
+387.84
+],
+[
+"T",
+0,
+"Subscription Details:",
+"Helvetica",
+10.0,
+50.0,
+481.71
+],
+[
+"T",
+0,
+"5 user(s) @ $1.50/user/month",
+"Helvetica-Bold",
+11.0,
+50.0,
+462.99
+],
+[
+"T",
+0,
+"Billed annually - Save up to 40%!",
+"Helvetica",
+9.0,
+50.0,
+447.43
+],
+[
+"T",
+0,
+"PAID",
+"Helvetica-Bold",
+20.0,
+107.11,
+316.53
+],
+[
+"T",
+0,
+"Paid on:",
+"Helvetica",
+9.0,
+210.0,
+339.43
+],
+[
+"T",
+0,
+" 18/11/2026",
+"Helvetica-Bold",
+9.0,
+242.66,
+339.43
+],
+[
+"T",
+0,
+"Thank you for your business!",
+"Helvetica",
+9.0,
+240.27,
+53.54
+],
+[
+"T",
+0,
+"This is a computer-generated document. No signature is required.",
+"Helvetica",
+8.0,
+181.43,
+39.26
+],
+[
+"T",
+0,
+"Timemoz | www.timemoz.com | support@timemoz.com",
+"Helvetica",
+8.0,
+200.01,
+25.26
+],
+[
+"RECT",
+0,
+50.0,
+268.0,
+495.28,
+35.0
+],
+[
+"RECT",
+0,
+50.0,
+303.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+325.28,
+353.0,
+220.0,
+123.0
+]
+]
+},
+"unpaid_manual": {
+"pages": 1,
+"input": {
+"invoiceNumber": "INV/2026/11/0002",
+"status": "UNPAID",
+"createdAt": "2026-11-13T00:00:00Z",
+"expiredAt": "2026-12-01T00:00:00Z",
+"customerName": "Ana Admin",
+"customerEmail": "ana@qa.co",
+"companyName": "PT QA Divisi",
+"companyPhone": "0800000002",
+"items": [
+{
+"description": "Langganan Business (3 bulanan): 20 user × 3 bulan with a very long description to wrap onto multiple lines and exceed the box height for sure really",
+"quantity": 60,
+"unitPrice": 30000,
+"totalPrice": 1800000
+},
+{
+"description": "Second",
+"quantity": 1,
+"unitPrice": 10,
+"totalPrice": 10
+},
+{
+"description": "Third",
+"quantity": 2.5,
+"unitPrice": 10,
+"totalPrice": 25
+}
+],
+"subPrice": 1800000,
+"taxPrice": 198000,
+"feePrice": 0,
+"totalPrice": 1998000,
+"paymentProvider": "manual",
+"currency": "IDR",
+"periodStart": "2026-12-01T00:00:00Z",
+"periodEnd": "2027-03-01T00:00:00Z",
+"taxLabel": "Tax (11%)",
+"paymentInstructions": "Please transfer the total amount before the due date.\nBank BCA 123456 a/n PT Timemoz\nInclude the invoice number as reference."
+},
+"expected": [
+[
+"T",
+0,
+"www.timemoz.com  |  support@timemoz.com",
+"Helvetica",
+8.5,
+50.0,
+743.79
+],
+[
+"T",
+0,
+"INVOICE",
+"Helvetica-Bold",
+22.0,
+455.92,
+776.09
+],
+[
+"T",
+0,
+"#INV/2026/11/0002",
+"Helvetica",
+10.0,
+459.11,
+757.71
+],
+[
+"T",
+0,
+"UNPAID",
+"Helvetica-Bold",
+9.0,
+483.48,
+734.43
+],
+[
+"T",
+0,
+"Issue date",
+"Helvetica",
+9.0,
+418.75,
+709.43
+],
+[
+"T",
+0,
+"13/11/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+709.43
+],
+[
+"T",
+0,
+"Due date",
+"Helvetica",
+9.0,
+423.76,
+695.43
+],
+[
+"T",
+0,
+"01/12/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+695.43
+],
+[
+"T",
+0,
+"BILL TO",
+"Helvetica-Bold",
+9.0,
+50.0,
+653.43
+],
+[
+"T",
+0,
+"Ana Admin",
+"Helvetica-Bold",
+11.0,
+50.0,
+636.99
+],
+[
+"T",
+0,
+"ana@qa.co",
+"Helvetica",
+10.0,
+50.0,
+622.71
+],
+[
+"T",
+0,
+"COMPANY",
+"Helvetica-Bold",
+9.0,
+317.64,
+653.43
+],
+[
+"T",
+0,
+"PT QA Divisi",
+"Helvetica-Bold",
+11.0,
+317.64,
+636.99
+],
+[
+"T",
+0,
+"0800000002",
+"Helvetica",
+10.0,
+317.64,
+622.71
+],
+[
+"T",
+0,
+"Bank transfer / manual",
+"Helvetica-Bold",
+8.0,
+71.96,
+594.15
+],
+[
+"T",
+0,
+"DESCRIPTION",
+"Helvetica-Bold",
+9.0,
+60.0,
+550.43
+],
+[
+"T",
+0,
+"QTY",
+"Helvetica-Bold",
+9.0,
+335.53,
+550.43
+],
+[
+"T",
+0,
+"UNIT PRICE",
+"Helvetica-Bold",
+9.0,
+417.6,
+550.43
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+9.0,
+506.81,
+550.43
+],
+[
+"T",
+0,
+"Langganan Business (3 bulanan): 20 user × 3 bulan ",
+"Helvetica",
+10.0,
+60.0,
+515.71
+],
+[
+"T",
+0,
+"with a very long description to wrap onto multiple ",
+"Helvetica",
+10.0,
+60.0,
+504.15
+],
+[
+"T",
+0,
+"60",
+"Helvetica",
+10.0,
+339.23,
+515.71
+],
+[
+"T",
+0,
+"Rp 30.000",
+"Helvetica",
+10.0,
+422.47,
+515.71
+],
+[
+"T",
+0,
+"Rp 1.800.000",
+"Helvetica-Bold",
+10.0,
+474.69,
+515.71
+],
+[
+"T",
+0,
+"Second",
+"Helvetica",
+10.0,
+60.0,
+475.71
+],
+[
+"T",
+0,
+"1",
+"Helvetica",
+10.0,
+342.01,
+475.71
+],
+[
+"T",
+0,
+"Rp 10",
+"Helvetica",
+10.0,
+441.93,
+475.71
+],
+[
+"T",
+0,
+"Rp 10",
+"Helvetica-Bold",
+10.0,
+508.05,
+475.71
+],
+[
+"T",
+0,
+"Third",
+"Helvetica",
+10.0,
+60.0,
+435.71
+],
+[
+"T",
+0,
+"2.5",
+"Helvetica",
+10.0,
+337.84,
+435.71
+],
+[
+"T",
+0,
+"Rp 10",
+"Helvetica",
+10.0,
+441.93,
+435.71
+],
+[
+"T",
+0,
+"Rp 25",
+"Helvetica-Bold",
+10.0,
+508.05,
+435.71
+],
+[
+"T",
+0,
+"Subtotal",
+"Helvetica",
+10.0,
+340.28,
+382.71
+],
+[
+"T",
+0,
+"Rp 1.800.000",
+"Helvetica",
+10.0,
+470.24,
+382.71
+],
+[
+"T",
+0,
+"Tax (11%)",
+"Helvetica",
+10.0,
+340.28,
+360.71
+],
+[
+"T",
+0,
+"Rp 198.000",
+"Helvetica",
+10.0,
+478.58,
+360.71
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+12.0,
+340.28,
+325.27
+],
+[
+"T",
+0,
+"Rp 1.998.000",
+"Helvetica-Bold",
+14.0,
+445.45,
+325.84
+],
+[
+"T",
+0,
+"Billing period:",
+"Helvetica",
+9.0,
+50.0,
+267.43
+],
+[
+"T",
+0,
+" 01/12/2026 - 01/03/2027",
+"Helvetica-Bold",
+9.0,
+104.15,
+267.43
+],
+[
+"T",
+0,
+"Payment instructions:",
+"Helvetica",
+10.0,
+50.0,
+250.71
+],
+[
+"T",
+0,
+"Please transfer the total amount before the due date.",
+"Helvetica",
+9.0,
+50.0,
+236.43
+],
+[
+"T",
+0,
+"Bank BCA 123456 a/n PT Timemoz",
+"Helvetica",
+9.0,
+50.0,
+226.02
+],
+[
+"T",
+0,
+"Include the invoice number as reference.",
+"Helvetica",
+9.0,
+50.0,
+215.62
+],
+[
+"T",
+0,
+"Thank you for your business!",
+"Helvetica",
+9.0,
+240.27,
+53.54
+],
+[
+"T",
+0,
+"This is a computer-generated document. No signature is required.",
+"Helvetica",
+8.0,
+181.43,
+39.26
+],
+[
+"T",
+0,
+"Timemoz | www.timemoz.com | support@timemoz.com",
+"Helvetica",
+8.0,
+200.01,
+25.26
+],
+[
+"RECT",
+0,
+50.0,
+272.0,
+495.28,
+35.0
+],
+[
+"RECT",
+0,
+50.0,
+307.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+387.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+325.28,
+437.0,
+220.0,
+101.0
+]
+]
+},
+"paid_manual": {
+"pages": 1,
+"input": {
+"invoiceNumber": "INV-1",
+"status": "PAID",
+"createdAt": "2026-11-01T00:00:00Z",
+"expiredAt": "2026-11-08T00:00:00Z",
+"customerName": "A",
+"customerEmail": "a@x.com",
+"companyName": "C",
+"companyPhone": "",
+"items": [
+{
+"description": "Plan",
+"quantity": 1,
+"unitPrice": 15000000,
+"totalPrice": 15000000
+}
+],
+"subPrice": 15000000,
+"taxPrice": 0,
+"feePrice": 0,
+"totalPrice": 15000000,
+"paymentProvider": "manual",
+"currency": "IDR",
+"paymentReference": "TRX-998877",
+"paidAt": "2026-11-02T00:00:00Z",
+"periodStart": "2026-11-01T00:00:00Z",
+"periodEnd": "2026-12-01T00:00:00Z",
+"taxLabel": "Tax"
+},
+"expected": [
+[
+"T",
+0,
+"www.timemoz.com  |  support@timemoz.com",
+"Helvetica",
+8.5,
+50.0,
+743.79
+],
+[
+"T",
+0,
+"INVOICE",
+"Helvetica-Bold",
+22.0,
+455.92,
+776.09
+],
+[
+"T",
+0,
+"#INV-1",
+"Helvetica",
+10.0,
+514.96,
+757.71
+],
+[
+"T",
+0,
+"PAID",
+"Helvetica-Bold",
+9.0,
+489.98,
+734.43
+],
+[
+"T",
+0,
+"Issue date",
+"Helvetica",
+9.0,
+418.75,
+709.43
+],
+[
+"T",
+0,
+"01/11/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+709.43
+],
+[
+"T",
+0,
+"BILL TO",
+"Helvetica-Bold",
+9.0,
+50.0,
+657.43
+],
+[
+"T",
+0,
+"A",
+"Helvetica-Bold",
+11.0,
+50.0,
+640.99
+],
+[
+"T",
+0,
+"a@x.com",
+"Helvetica",
+10.0,
+50.0,
+626.71
+],
+[
+"T",
+0,
+"COMPANY",
+"Helvetica-Bold",
+9.0,
+317.64,
+657.43
+],
+[
+"T",
+0,
+"C",
+"Helvetica-Bold",
+11.0,
+317.64,
+640.99
+],
+[
+"T",
+0,
+"-",
+"Helvetica",
+10.0,
+317.64,
+626.71
+],
+[
+"T",
+0,
+"Bank transfer / manual",
+"Helvetica-Bold",
+8.0,
+71.96,
+598.15
+],
+[
+"T",
+0,
+"DESCRIPTION",
+"Helvetica-Bold",
+9.0,
+60.0,
+554.43
+],
+[
+"T",
+0,
+"QTY",
+"Helvetica-Bold",
+9.0,
+335.53,
+554.43
+],
+[
+"T",
+0,
+"UNIT PRICE",
+"Helvetica-Bold",
+9.0,
+417.6,
+554.43
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+9.0,
+506.81,
+554.43
+],
+[
+"T",
+0,
+"Plan",
+"Helvetica",
+10.0,
+60.0,
+519.71
+],
+[
+"T",
+0,
+"1",
+"Helvetica",
+10.0,
+342.01,
+519.71
+],
+[
+"T",
+0,
+"Rp 15.000.000",
+"Helvetica",
+10.0,
+403.01,
+519.71
+],
+[
+"T",
+0,
+"Rp 15.000.000",
+"Helvetica-Bold",
+10.0,
+469.13,
+519.71
+],
+[
+"T",
+0,
+"Subtotal",
+"Helvetica",
+10.0,
+340.28,
+466.71
+],
+[
+"T",
+0,
+"Rp 15.000.000",
+"Helvetica",
+10.0,
+464.68,
+466.71
+],
+[
+"T",
+0,
+"Tax",
+"Helvetica",
+10.0,
+340.28,
+444.71
+],
+[
+"T",
+0,
+"Rp 0",
+"Helvetica",
+10.0,
+509.16,
+444.71
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+12.0,
+340.28,
+409.27
+],
+[
+"T",
+0,
+"Rp 15.000.000",
+"Helvetica-Bold",
+14.0,
+437.67,
+409.84
+],
+[
+"T",
+0,
+"PAID",
+"Helvetica-Bold",
+20.0,
+107.11,
+338.53
+],
+[
+"T",
+0,
+"Paid on:",
+"Helvetica",
+9.0,
+210.0,
+361.43
+],
+[
+"T",
+0,
+" 02/11/2026",
+"Helvetica-Bold",
+9.0,
+242.66,
+361.43
+],
+[
+"T",
+0,
+"Payment reference:",
+"Helvetica",
+9.0,
+210.0,
+347.43
+],
+[
+"T",
+0,
+" TRX-998877",
+"Helvetica-Bold",
+9.0,
+287.63,
+347.43
+],
+[
+"T",
+0,
+"Covered period:",
+"Helvetica",
+9.0,
+210.0,
+333.43
+],
+[
+"T",
+0,
+" 01/11/2026 - 01/12/2026",
+"Helvetica-Bold",
+9.0,
+273.8,
+333.43
+],
+[
+"T",
+0,
+"Thank you for your business!",
+"Helvetica",
+9.0,
+240.27,
+53.54
+],
+[
+"T",
+0,
+"This is a computer-generated document. No signature is required.",
+"Helvetica",
+8.0,
+181.43,
+39.26
+],
+[
+"T",
+0,
+"Timemoz | www.timemoz.com | support@timemoz.com",
+"Helvetica",
+8.0,
+200.01,
+25.26
+],
+[
+"RECT",
+0,
+50.0,
+268.0,
+495.28,
+35.0
+],
+[
+"RECT",
+0,
+50.0,
+303.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+325.28,
+353.0,
+220.0,
+101.0
+]
+]
+},
+"long_unpaid": {
+"pages": 1,
+"input": {
+"invoiceNumber": "INV-LONG-99",
+"status": "UNPAID",
+"createdAt": "2026-01-05T00:00:00Z",
+"expiredAt": "2026-01-12T00:00:00Z",
+"customerName": "Bapak Muhammad Ibrahim Abdurrahman bin Ahmad Zulkifli al-Banjari Putra Sulung Jaya Makmur Sentosa",
+"customerEmail": "averyveryverylongemailaddress_without_any_spaces_whatsoever_1234567890@subdomain.example-company.co.id",
+"companyName": "PT Tëst Ünïcode — “Quoted” Co. & Sons (Persero) Tbk. Cabang Utama",
+"companyPhone": "+62 812-3456-7890",
+"companyAddress": "Jl. Jend. Sudirman Kav. 52-53,\nLantai 12 Gedung Menara/Tower A-B, Senayan, Kebayoran Baru, Jakarta Selatan 12190 – Indonesia",
+"items": [
+{
+"description": "Pro-rated upgrade: Business-plan 20 users/month × 3 – very-long-hyphenated-description-token-that-keeps-going-and-going-forever-and-ever-without-spaces end",
+"quantity": 2.5,
+"unitPrice": 1234.5678,
+"totalPrice": 3086.4195
+},
+{
+"description": "",
+"quantity": 0,
+"unitPrice": 0,
+"totalPrice": 0
+}
+],
+"subPrice": -5.5,
+"taxPrice": 339.51,
+"feePrice": 0,
+"totalPrice": 3425.93,
+"paymentProvider": "manual",
+"currency": "IDR",
+"paidAt": "2026-01-06T10:00:00Z",
+"paymentReference": "REF-0123456789-ABCDEFGHIJ-KLMNOPQRST-UVWXYZ-0123456789-ABCDEFGHIJ-KLMNOPQRST-UVWXYZ-0123456789",
+"periodStart": "2026-01-05T00:00:00Z",
+"periodEnd": "2026-02-05T00:00:00Z",
+"taxLabel": "Tax (10.5%)",
+"paymentInstructions": "Transfer to BCA 1234567890 a.n. PT Timemoz Indonesia Jaya before the due date. Include the invoice number as the payment reference, otherwise reconciliation may be delayed by several business days.\n\nThanks!"
+},
+"expected": [
+[
+"T",
+0,
+"www.timemoz.com  |  support@timemoz.com",
+"Helvetica",
+8.5,
+50.0,
+743.79
+],
+[
+"T",
+0,
+"INVOICE",
+"Helvetica-Bold",
+22.0,
+455.92,
+776.09
+],
+[
+"T",
+0,
+"#INV-LONG-99",
+"Helvetica",
+10.0,
+477.73,
+757.71
+],
+[
+"T",
+0,
+"UNPAID",
+"Helvetica-Bold",
+9.0,
+483.48,
+734.43
+],
+[
+"T",
+0,
+"Issue date",
+"Helvetica",
+9.0,
+418.75,
+709.43
+],
+[
+"T",
+0,
+"05/01/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+709.43
+],
+[
+"T",
+0,
+"Due date",
+"Helvetica",
+9.0,
+423.76,
+695.43
+],
+[
+"T",
+0,
+"12/01/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+695.43
+],
+[
+"T",
+0,
+"BILL TO",
+"Helvetica-Bold",
+9.0,
+50.0,
+653.43
+],
+[
+"T",
+0,
+"Bapak Muhammad Ibrahim Abdurrahman bin Ahmad Zulkifli al-Banjari Putra Sulung Jaya ",
+"Helvetica-Bold",
+11.0,
+50.0,
+636.99
+],
+[
+"T",
+0,
+"Makmur Sentosa",
+"Helvetica-Bold",
+11.0,
+50.0,
+623.9
+],
+[
+"T",
+0,
+"averyveryverylongemailaddress_without_any_spaces_whatsoever_1234567890@subdomain.example-",
+"Helvetica",
+10.0,
+50.0,
+622.71
+],
+[
+"T",
+0,
+"company.co.id",
+"Helvetica",
+10.0,
+50.0,
+611.15
+],
+[
+"T",
+0,
+"COMPANY",
+"Helvetica-Bold",
+9.0,
+317.64,
+653.43
+],
+[
+"T",
+0,
+"PT Tëst Ünïcode  Quoted Co. & Sons ",
+"Helvetica-Bold",
+11.0,
+317.64,
+636.99
+],
+[
+"T",
+0,
+"(Persero) Tbk. Cabang Utama",
+"Helvetica-Bold",
+11.0,
+317.64,
+623.9
+],
+[
+"T",
+0,
+"+62 812-3456-7890",
+"Helvetica",
+10.0,
+317.64,
+622.71
+],
+[
+"T",
+0,
+"Jl. Jend. Sudirman Kav. 52-53,",
+"Helvetica",
+10.0,
+317.64,
+607.71
+],
+[
+"T",
+0,
+"Lantai 12 Gedung Menara/Tower A-B, Senayan, ",
+"Helvetica",
+10.0,
+317.64,
+596.15
+],
+[
+"T",
+0,
+"Kebayoran Baru, Jakarta Selatan 12190  ",
+"Helvetica",
+10.0,
+317.64,
+584.59
+],
+[
+"T",
+0,
+"Indonesia",
+"Helvetica",
+10.0,
+317.64,
+573.03
+],
+[
+"T",
+0,
+"Bank transfer / manual",
+"Helvetica-Bold",
+8.0,
+71.96,
+594.15
+],
+[
+"T",
+0,
+"DESCRIPTION",
+"Helvetica-Bold",
+9.0,
+60.0,
+550.43
+],
+[
+"T",
+0,
+"QTY",
+"Helvetica-Bold",
+9.0,
+335.53,
+550.43
+],
+[
+"T",
+0,
+"UNIT PRICE",
+"Helvetica-Bold",
+9.0,
+417.6,
+550.43
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+9.0,
+506.81,
+550.43
+],
+[
+"T",
+0,
+"Pro-rated upgrade: Business-plan 20 users/month × ",
+"Helvetica",
+10.0,
+60.0,
+515.71
+],
+[
+"T",
+0,
+"3  very-long-hyphenated-description-token-that-",
+"Helvetica",
+10.0,
+60.0,
+504.15
+],
+[
+"T",
+0,
+"2.5",
+"Helvetica",
+10.0,
+337.84,
+515.71
+],
+[
+"T",
+0,
+"Rp 1.235",
+"Helvetica",
+10.0,
+428.03,
+515.71
+],
+[
+"T",
+0,
+"Rp 3.086",
+"Helvetica-Bold",
+10.0,
+494.15,
+515.71
+],
+[
+"T",
+0,
+"0",
+"Helvetica",
+10.0,
+342.01,
+475.71
+],
+[
+"T",
+0,
+"Rp 0",
+"Helvetica",
+10.0,
+447.49,
+475.71
+],
+[
+"T",
+0,
+"Rp 0",
+"Helvetica-Bold",
+10.0,
+513.61,
+475.71
+],
+[
+"T",
+0,
+"Subtotal",
+"Helvetica",
+10.0,
+340.28,
+422.71
+],
+[
+"T",
+0,
+"Rp -5",
+"Helvetica",
+10.0,
+505.83,
+422.71
+],
+[
+"T",
+0,
+"Tax (10.5%)",
+"Helvetica",
+10.0,
+340.28,
+400.71
+],
+[
+"T",
+0,
+"Rp 340",
+"Helvetica",
+10.0,
+498.04,
+400.71
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+12.0,
+340.28,
+365.27
+],
+[
+"T",
+0,
+"Rp 3.426",
+"Helvetica-Bold",
+14.0,
+472.7,
+365.84
+],
+[
+"T",
+0,
+"Billing period:",
+"Helvetica",
+9.0,
+50.0,
+307.43
+],
+[
+"T",
+0,
+" 05/01/2026 - 05/02/2026",
+"Helvetica-Bold",
+9.0,
+104.15,
+307.43
+],
+[
+"T",
+0,
+"Payment instructions:",
+"Helvetica",
+10.0,
+50.0,
+290.71
+],
+[
+"T",
+0,
+"Transfer to BCA 1234567890 a.n. PT Timemoz Indonesia Jaya before the due date. Include the invoice number as the ",
+"Helvetica",
+9.0,
+50.0,
+276.43
+],
+[
+"T",
+0,
+"payment reference, otherwise reconciliation may be delayed by several business days.",
+"Helvetica",
+9.0,
+50.0,
+266.02
+],
+[
+"T",
+0,
+"Thanks!",
+"Helvetica",
+9.0,
+50.0,
+245.22
+],
+[
+"T",
+0,
+"Thank you for your business!",
+"Helvetica",
+9.0,
+240.27,
+53.54
+],
+[
+"T",
+0,
+"This is a computer-generated document. No signature is required.",
+"Helvetica",
+8.0,
+181.43,
+39.26
+],
+[
+"T",
+0,
+"Timemoz | www.timemoz.com | support@timemoz.com",
+"Helvetica",
+8.0,
+200.01,
+25.26
+],
+[
+"RECT",
+0,
+50.0,
+272.0,
+495.28,
+35.0
+],
+[
+"RECT",
+0,
+50.0,
+307.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+325.28,
+397.0,
+220.0,
+101.0
+]
+]
+},
+"cancelled_link": {
+"pages": 1,
+"input": {
+"invoiceNumber": "INV-LONG-99",
+"status": "CANCELLED",
+"createdAt": "2026-01-05T00:00:00Z",
+"expiredAt": "2026-01-12T00:00:00Z",
+"customerName": "Bapak Muhammad Ibrahim Abdurrahman bin Ahmad Zulkifli al-Banjari Putra Sulung Jaya Makmur Sentosa",
+"customerEmail": "averyveryverylongemailaddress_without_any_spaces_whatsoever_1234567890@subdomain.example-company.co.id",
+"companyName": "PT Tëst Ünïcode — “Quoted” Co. & Sons (Persero) Tbk. Cabang Utama",
+"companyPhone": "+62 812-3456-7890",
+"companyAddress": "Jl. Jend. Sudirman Kav. 52-53,\nLantai 12 Gedung Menara/Tower A-B, Senayan, Kebayoran Baru, Jakarta Selatan 12190 – Indonesia",
+"items": [
+{
+"description": "Pro-rated upgrade: Business-plan 20 users/month × 3 – very-long-hyphenated-description-token-that-keeps-going-and-going-forever-and-ever-without-spaces end",
+"quantity": 2.5,
+"unitPrice": 1234.5678,
+"totalPrice": 3086.4195
+},
+{
+"description": "",
+"quantity": 0,
+"unitPrice": 0,
+"totalPrice": 0
+}
+],
+"subPrice": 3086.42,
+"taxPrice": 339.51,
+"feePrice": 1.1,
+"totalPrice": 3425.93,
+"paymentProvider": "paypal",
+"currency": "usd",
+"billingInterval": "YEAR",
+"quantity": 20,
+"pricePerUser": 0.125,
+"paidAt": "2026-01-06T10:00:00Z",
+"periodStart": "2026-01-05T00:00:00Z",
+"periodEnd": "2026-02-05T00:00:00Z",
+"taxLabel": "Tax (10.5%)",
+"paymentUrl": "https://www.paypal.com/checkoutnow?token=EC-1AB23456CD789012E&useraction=commit&some_very_long_param=abcdefghijklmnopqrstuvwxyz0123456789-abcdefghijklmnopqrstuvwxyz0123456789"
+},
+"expected": [
+[
+"T",
+0,
+"www.timemoz.com  |  support@timemoz.com",
+"Helvetica",
+8.5,
+50.0,
+743.79
+],
+[
+"T",
+0,
+"INVOICE",
+"Helvetica-Bold",
+22.0,
+455.92,
+776.09
+],
+[
+"T",
+0,
+"#INV-LONG-99",
+"Helvetica",
+10.0,
+477.73,
+757.71
+],
+[
+"T",
+0,
+"CANCELLED",
+"Helvetica-Bold",
+9.0,
+472.53,
+734.43
+],
+[
+"T",
+0,
+"Issue date",
+"Helvetica",
+9.0,
+418.75,
+709.43
+],
+[
+"T",
+0,
+"05/01/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+709.43
+],
+[
+"T",
+0,
+"Due date",
+"Helvetica",
+9.0,
+423.76,
+695.43
+],
+[
+"T",
+0,
+"12/01/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+695.43
+],
+[
+"T",
+0,
+"BILL TO",
+"Helvetica-Bold",
+9.0,
+50.0,
+653.43
+],
+[
+"T",
+0,
+"Bapak Muhammad Ibrahim Abdurrahman bin Ahmad Zulkifli al-Banjari Putra Sulung Jaya ",
+"Helvetica-Bold",
+11.0,
+50.0,
+636.99
+],
+[
+"T",
+0,
+"Makmur Sentosa",
+"Helvetica-Bold",
+11.0,
+50.0,
+623.9
+],
+[
+"T",
+0,
+"averyveryverylongemailaddress_without_any_spaces_whatsoever_1234567890@subdomain.example-",
+"Helvetica",
+10.0,
+50.0,
+622.71
+],
+[
+"T",
+0,
+"company.co.id",
+"Helvetica",
+10.0,
+50.0,
+611.15
+],
+[
+"T",
+0,
+"COMPANY",
+"Helvetica-Bold",
+9.0,
+317.64,
+653.43
+],
+[
+"T",
+0,
+"PT Tëst Ünïcode  Quoted Co. & Sons ",
+"Helvetica-Bold",
+11.0,
+317.64,
+636.99
+],
+[
+"T",
+0,
+"(Persero) Tbk. Cabang Utama",
+"Helvetica-Bold",
+11.0,
+317.64,
+623.9
+],
+[
+"T",
+0,
+"+62 812-3456-7890",
+"Helvetica",
+10.0,
+317.64,
+622.71
+],
+[
+"T",
+0,
+"Jl. Jend. Sudirman Kav. 52-53,",
+"Helvetica",
+10.0,
+317.64,
+607.71
+],
+[
+"T",
+0,
+"Lantai 12 Gedung Menara/Tower A-B, Senayan, ",
+"Helvetica",
+10.0,
+317.64,
+596.15
+],
+[
+"T",
+0,
+"Kebayoran Baru, Jakarta Selatan 12190  ",
+"Helvetica",
+10.0,
+317.64,
+584.59
+],
+[
+"T",
+0,
+"Indonesia",
+"Helvetica",
+10.0,
+317.64,
+573.03
+],
+[
+"T",
+0,
+"PAYPAL",
+"Helvetica-Bold",
+8.0,
+65.02,
+594.15
+],
+[
+"T",
+0,
+"YEARLY",
+"Helvetica-Bold",
+8.0,
+129.26,
+594.15
+],
+[
+"T",
+0,
+"DESCRIPTION",
+"Helvetica-Bold",
+9.0,
+60.0,
+550.43
+],
+[
+"T",
+0,
+"QTY",
+"Helvetica-Bold",
+9.0,
+335.53,
+550.43
+],
+[
+"T",
+0,
+"UNIT PRICE",
+"Helvetica-Bold",
+9.0,
+417.6,
+550.43
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+9.0,
+506.81,
+550.43
+],
+[
+"T",
+0,
+"Pro-rated upgrade: Business-plan 20 users/month × ",
+"Helvetica",
+10.0,
+60.0,
+515.71
+],
+[
+"T",
+0,
+"3  very-long-hyphenated-description-token-that-",
+"Helvetica",
+10.0,
+60.0,
+504.15
+],
+[
+"T",
+0,
+"2.5",
+"Helvetica",
+10.0,
+337.84,
+515.71
+],
+[
+"T",
+0,
+"$1234.57",
+"Helvetica",
+10.0,
+426.91,
+515.71
+],
+[
+"T",
+0,
+"$3086.42",
+"Helvetica-Bold",
+10.0,
+493.58,
+515.71
+],
+[
+"T",
+0,
+"0",
+"Helvetica",
+10.0,
+342.01,
+475.71
+],
+[
+"T",
+0,
+"$0.00",
+"Helvetica",
+10.0,
+443.59,
+475.71
+],
+[
+"T",
+0,
+"$0.00",
+"Helvetica-Bold",
+10.0,
+510.26,
+475.71
+],
+[
+"T",
+0,
+"Subtotal",
+"Helvetica",
+10.0,
+340.28,
+422.71
+],
+[
+"T",
+0,
+"$3086.42",
+"Helvetica",
+10.0,
+488.58,
+422.71
+],
+[
+"T",
+0,
+"Tax (10.5%)",
+"Helvetica",
+10.0,
+340.28,
+400.71
+],
+[
+"T",
+0,
+"$339.51",
+"Helvetica",
+10.0,
+494.14,
+400.71
+],
+[
+"T",
+0,
+"Fee",
+"Helvetica",
+10.0,
+340.28,
+378.71
+],
+[
+"T",
+0,
+"$1.10",
+"Helvetica",
+10.0,
+505.26,
+378.71
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+12.0,
+340.28,
+343.27
+],
+[
+"T",
+0,
+"$3425.93",
+"Helvetica-Bold",
+14.0,
+471.9,
+343.84
+],
+[
+"T",
+0,
+"Subscription Details:",
+"Helvetica",
+10.0,
+50.0,
+437.71
+],
+[
+"T",
+0,
+"20 user(s) @ $0.13/user/month",
+"Helvetica-Bold",
+11.0,
+50.0,
+418.99
+],
+[
+"T",
+0,
+"Billed annually - Save up to 40%!",
+"Helvetica",
+9.0,
+50.0,
+403.43
+],
+[
+"T",
+0,
+"Complete your payment:",
+"Helvetica",
+10.0,
+50.0,
+284.71
+],
+[
+"T",
+0,
+"https://www.paypal.com/checkoutnow?",
+"Helvetica",
+9.0,
+50.0,
+270.43
+],
+[
+"T",
+0,
+"token=EC-1AB23456CD789012E&useraction=commit&some_very_long_param=abcdefghijklmnopqrstuvwxyz0123456789-",
+"Helvetica",
+9.0,
+50.0,
+260.02
+],
+[
+"T",
+0,
+"abcdefghijklmnopqrstuvwxyz0123456789",
+"Helvetica",
+9.0,
+50.0,
+249.62
+],
+[
+"T",
+0,
+"Thank you for your business!",
+"Helvetica",
+9.0,
+240.27,
+53.54
+],
+[
+"T",
+0,
+"This is a computer-generated document. No signature is required.",
+"Helvetica",
+8.0,
+181.43,
+39.26
+],
+[
+"T",
+0,
+"Timemoz | www.timemoz.com | support@timemoz.com",
+"Helvetica",
+8.0,
+200.01,
+25.26
+],
+[
+"RECT",
+0,
+50.0,
+272.0,
+495.28,
+35.0
+],
+[
+"RECT",
+0,
+50.0,
+307.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+325.28,
+397.0,
+220.0,
+123.0
+]
+]
+},
+"many_items": {
+"pages": 15,
+"input": {
+"invoiceNumber": "INV-2",
+"status": "EXPIRED",
+"createdAt": "2026-11-01T00:00:00Z",
+"expiredAt": "2026-11-08T00:00:00Z",
+"customerName": "A",
+"customerEmail": "a@x.com",
+"companyName": "C",
+"companyPhone": "1",
+"items": [
+{
+"description": "Item 1",
+"quantity": 1,
+"unitPrice": 1000,
+"totalPrice": 1000
+},
+{
+"description": "Item 2",
+"quantity": 2,
+"unitPrice": 1000,
+"totalPrice": 2000
+},
+{
+"description": "Item 3",
+"quantity": 3,
+"unitPrice": 1000,
+"totalPrice": 3000
+},
+{
+"description": "Item 4",
+"quantity": 4,
+"unitPrice": 1000,
+"totalPrice": 4000
+},
+{
+"description": "Item 5",
+"quantity": 5,
+"unitPrice": 1000,
+"totalPrice": 5000
+},
+{
+"description": "Item 6",
+"quantity": 6,
+"unitPrice": 1000,
+"totalPrice": 6000
+},
+{
+"description": "Item 7",
+"quantity": 7,
+"unitPrice": 1000,
+"totalPrice": 7000
+},
+{
+"description": "Item 8",
+"quantity": 8,
+"unitPrice": 1000,
+"totalPrice": 8000
+},
+{
+"description": "Item 9",
+"quantity": 9,
+"unitPrice": 1000,
+"totalPrice": 9000
+},
+{
+"description": "Item 10",
+"quantity": 10,
+"unitPrice": 1000,
+"totalPrice": 10000
+},
+{
+"description": "Item 11",
+"quantity": 11,
+"unitPrice": 1000,
+"totalPrice": 11000
+},
+{
+"description": "Item 12",
+"quantity": 12,
+"unitPrice": 1000,
+"totalPrice": 12000
+},
+{
+"description": "Item 13",
+"quantity": 13,
+"unitPrice": 1000,
+"totalPrice": 13000
+},
+{
+"description": "Item 14",
+"quantity": 14,
+"unitPrice": 1000,
+"totalPrice": 14000
+}
+],
+"subPrice": 1,
+"taxPrice": 1,
+"feePrice": 0,
+"totalPrice": 2,
+"paymentProvider": "midtrans",
+"paymentUrl": "https://x.example/pay"
+},
+"expected": [
+[
+"T",
+0,
+"www.timemoz.com  |  support@timemoz.com",
+"Helvetica",
+8.5,
+50.0,
+743.79
+],
+[
+"T",
+0,
+"INVOICE",
+"Helvetica-Bold",
+22.0,
+455.92,
+776.09
+],
+[
+"T",
+0,
+"#INV-2",
+"Helvetica",
+10.0,
+514.96,
+757.71
+],
+[
+"T",
+0,
+"EXPIRED",
+"Helvetica-Bold",
+9.0,
+480.53,
+734.43
+],
+[
+"T",
+0,
+"Issue date",
+"Helvetica",
+9.0,
+418.75,
+709.43
+],
+[
+"T",
+0,
+"01/11/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+709.43
+],
+[
+"T",
+0,
+"Due date",
+"Helvetica",
+9.0,
+423.76,
+695.43
+],
+[
+"T",
+0,
+"08/11/2026",
+"Helvetica-Bold",
+9.0,
+500.24,
+695.43
+],
+[
+"T",
+0,
+"BILL TO",
+"Helvetica-Bold",
+9.0,
+50.0,
+653.43
+],
+[
+"T",
+0,
+"A",
+"Helvetica-Bold",
+11.0,
+50.0,
+636.99
+],
+[
+"T",
+0,
+"a@x.com",
+"Helvetica",
+10.0,
+50.0,
+622.71
+],
+[
+"T",
+0,
+"COMPANY",
+"Helvetica-Bold",
+9.0,
+317.64,
+653.43
+],
+[
+"T",
+0,
+"C",
+"Helvetica-Bold",
+11.0,
+317.64,
+636.99
+],
+[
+"T",
+0,
+"1",
+"Helvetica",
+10.0,
+317.64,
+622.71
+],
+[
+"T",
+0,
+"MIDTRANS",
+"Helvetica-Bold",
+8.0,
+58.89,
+594.15
+],
+[
+"T",
+0,
+"DESCRIPTION",
+"Helvetica-Bold",
+9.0,
+60.0,
+550.43
+],
+[
+"T",
+0,
+"QTY",
+"Helvetica-Bold",
+9.0,
+335.53,
+550.43
+],
+[
+"T",
+0,
+"UNIT PRICE",
+"Helvetica-Bold",
+9.0,
+417.6,
+550.43
+],
+[
+"T",
+0,
+"TOTAL",
+"Helvetica-Bold",
+9.0,
+506.81,
+550.43
+],
+[
+"T",
+0,
+"Item 1",
+"Helvetica",
+10.0,
+60.0,
+515.71
+],
+[
+"T",
+0,
+"1",
+"Helvetica",
+10.0,
+342.01,
+515.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+515.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+515.71
+],
+[
+"T",
+0,
+"Item 2",
+"Helvetica",
+10.0,
+60.0,
+475.71
+],
+[
+"T",
+0,
+"2",
+"Helvetica",
+10.0,
+342.01,
+475.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+475.71
+],
+[
+"T",
+0,
+"Rp 2.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+475.71
+],
+[
+"T",
+0,
+"Item 3",
+"Helvetica",
+10.0,
+60.0,
+435.71
+],
+[
+"T",
+0,
+"3",
+"Helvetica",
+10.0,
+342.01,
+435.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+435.71
+],
+[
+"T",
+0,
+"Rp 3.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+435.71
+],
+[
+"T",
+0,
+"Item 4",
+"Helvetica",
+10.0,
+60.0,
+395.71
+],
+[
+"T",
+0,
+"4",
+"Helvetica",
+10.0,
+342.01,
+395.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+395.71
+],
+[
+"T",
+0,
+"Rp 4.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+395.71
+],
+[
+"T",
+0,
+"Item 5",
+"Helvetica",
+10.0,
+60.0,
+355.71
+],
+[
+"T",
+0,
+"5",
+"Helvetica",
+10.0,
+342.01,
+355.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+355.71
+],
+[
+"T",
+0,
+"Rp 5.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+355.71
+],
+[
+"T",
+0,
+"Item 6",
+"Helvetica",
+10.0,
+60.0,
+315.71
+],
+[
+"T",
+0,
+"6",
+"Helvetica",
+10.0,
+342.01,
+315.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+315.71
+],
+[
+"T",
+0,
+"Rp 6.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+315.71
+],
+[
+"T",
+0,
+"Item 7",
+"Helvetica",
+10.0,
+60.0,
+275.71
+],
+[
+"T",
+0,
+"7",
+"Helvetica",
+10.0,
+342.01,
+275.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+275.71
+],
+[
+"T",
+0,
+"Rp 7.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+275.71
+],
+[
+"T",
+0,
+"Item 8",
+"Helvetica",
+10.0,
+60.0,
+235.71
+],
+[
+"T",
+0,
+"8",
+"Helvetica",
+10.0,
+342.01,
+235.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+235.71
+],
+[
+"T",
+0,
+"Rp 8.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+235.71
+],
+[
+"T",
+0,
+"Item 9",
+"Helvetica",
+10.0,
+60.0,
+195.71
+],
+[
+"T",
+0,
+"9",
+"Helvetica",
+10.0,
+342.01,
+195.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+195.71
+],
+[
+"T",
+0,
+"Rp 9.000",
+"Helvetica-Bold",
+10.0,
+494.15,
+195.71
+],
+[
+"T",
+0,
+"Item 10",
+"Helvetica",
+10.0,
+60.0,
+155.71
+],
+[
+"T",
+0,
+"10",
+"Helvetica",
+10.0,
+339.23,
+155.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+155.71
+],
+[
+"T",
+0,
+"Rp 10.000",
+"Helvetica-Bold",
+10.0,
+488.59,
+155.71
+],
+[
+"T",
+0,
+"Item 11",
+"Helvetica",
+10.0,
+60.0,
+115.71
+],
+[
+"T",
+0,
+"11",
+"Helvetica",
+10.0,
+339.23,
+115.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+115.71
+],
+[
+"T",
+0,
+"Rp 11.000",
+"Helvetica-Bold",
+10.0,
+488.59,
+115.71
+],
+[
+"T",
+0,
+"Item 12",
+"Helvetica",
+10.0,
+60.0,
+75.71
+],
+[
+"T",
+0,
+"12",
+"Helvetica",
+10.0,
+339.23,
+75.71
+],
+[
+"T",
+0,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+75.71
+],
+[
+"T",
+0,
+"Rp 12.000",
+"Helvetica-Bold",
+10.0,
+488.59,
+75.71
+],
+[
+"T",
+0,
+"Item 13",
+"Helvetica",
+10.0,
+60.0,
+35.71
+],
+[
+"RECT",
+0,
+50.0,
+272.0,
+495.28,
+35.0
+],
+[
+"RECT",
+0,
+50.0,
+307.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+387.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+467.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+547.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+627.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+707.0,
+495.28,
+40.0
+],
+[
+"RECT",
+0,
+50.0,
+787.0,
+495.28,
+40.0
+],
+[
+"T",
+1,
+"13",
+"Helvetica",
+10.0,
+339.23,
+784.71
+],
+[
+"T",
+2,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+784.71
+],
+[
+"T",
+3,
+"Rp 13.000",
+"Helvetica-Bold",
+10.0,
+488.59,
+784.71
+],
+[
+"T",
+3,
+"Item 14",
+"Helvetica",
+10.0,
+60.0,
+-4.29
+],
+[
+"T",
+4,
+"14",
+"Helvetica",
+10.0,
+339.23,
+784.71
+],
+[
+"T",
+5,
+"Rp 1.000",
+"Helvetica",
+10.0,
+428.03,
+784.71
+],
+[
+"T",
+6,
+"Rp 14.000",
+"Helvetica-Bold",
+10.0,
+488.59,
+784.71
+],
+[
+"RECT",
+6,
+325.28,
+877.0,
+220.0,
+101.0
+],
+[
+"T",
+7,
+"Subtotal",
+"Helvetica",
+10.0,
+340.28,
+784.71
+],
+[
+"T",
+8,
+"Rp 1",
+"Helvetica",
+10.0,
+509.16,
+784.71
+],
+[
+"T",
+9,
+"Tax (11%)",
+"Helvetica",
+10.0,
+340.28,
+784.71
+],
+[
+"T",
+10,
+"Rp 1",
+"Helvetica",
+10.0,
+509.16,
+784.71
+],
+[
+"T",
+11,
+"TOTAL",
+"Helvetica-Bold",
+12.0,
+340.28,
+783.27
+],
+[
+"T",
+12,
+"Rp 2",
+"Helvetica-Bold",
+14.0,
+499.94,
+781.84
+],
+[
+"T",
+13,
+"Complete your payment:",
+"Helvetica",
+10.0,
+50.0,
+784.71
+],
+[
+"T",
+14,
+"https://x.example/pay",
+"Helvetica",
+9.0,
+50.0,
+785.43
+],
+[
+"T",
+14,
+"Thank you for your business!",
+"Helvetica",
+9.0,
+240.27,
+53.54
+],
+[
+"T",
+14,
+"This is a computer-generated document. No signature is required.",
+"Helvetica",
+8.0,
+181.43,
+39.26
+],
+[
+"T",
+14,
+"Timemoz | www.timemoz.com | support@timemoz.com",
+"Helvetica",
+8.0,
+200.01,
+25.26
+]
+]
+}
+}
