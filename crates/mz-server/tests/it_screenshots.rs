@@ -825,3 +825,92 @@ fn uuid_like() -> String {
         .map_or(0, |d| d.as_nanos());
     format!("{n:x}")
 }
+
+/// Node 4b0df27: lock per timeline paling lama 1 detik; tak kebagian → 503, tanpa baris tertulis,
+/// dan koneksi kembali ke pool (kiriman berikutnya berhasil).
+#[tokio::test]
+async fn activity_logs_post_lock_timeout_503() {
+    let Some(app) = TestApp::new(mz_server::app).await else {
+        return;
+    };
+    let fx = app.company().await;
+    seed(&app, &fx).await;
+    // Timeline sendiri (salinan 'itseed B' staff2 D2): company fixture dipakai bersama dan
+    // test berjalan paralel, jadi baris di timeline 'itseed B' akan mengganggu
+    // `activity_logs_post_upsert` (pencarian "baris terakhir" per timeline).
+    let (tl_id, tl): (i32, String) = sqlx::query_as(&format!(
+        r#"INSERT INTO "trackingTimeline" (uuid, note, "startAt", "endAt", "startAtUtc", "endAtUtc", timezone,
+                                          "trackingId", "projectId", status, billable)
+           SELECT gen_random_uuid(), 'itlock', tt."startAt", tt."endAt", tt."startAtUtc", tt."endAtUtc",
+                  tt.timezone, tt."trackingId", tt."projectId", tt.status, tt.billable
+             FROM "trackingTimeline" tt JOIN tracking tr ON tr.id = tt."trackingId"
+            WHERE tr."userId" = {} AND tt.note = 'itseed B' AND tr."takenDate" = '2026-03-11'
+           RETURNING id, uuid::text"#,
+        fx.staff2.id
+    ))
+    .fetch_one(app.db())
+    .await
+    .unwrap();
+    app.exec(&format!(
+        r#"UPDATE company SET "useActivityTrack" = true WHERE id = {}"#,
+        fx.id
+    ))
+    .await;
+    let title = format!("ItLock {}", uuid_like());
+    let body = json!({
+        "process_name": "ItLockApp", "window_title": title,
+        "startAt": 1_773_234_300, "endAt": 1_773_234_360, "timezone": "UTC",
+        "tracking_timeline_uuid": tl,
+    });
+
+    // Transaksi lain memegang lock app timeline ini.
+    let mut holder = app.db().begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+        .bind(format!("activity-log:app:{tl_id}"))
+        .execute(&mut *holder)
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    let r = app
+        .post("/activity-logs")
+        .token(&fx.staff2.token)
+        .json(&body)
+        .send()
+        .await;
+    let waited = started.elapsed();
+    r.assert_status(503);
+    assert_eq!(
+        r.json,
+        json!({
+            "message": "Activity log for this tracking timeline is busy, please retry",
+            "error": "Service Unavailable",
+            "statusCode": 503
+        })
+    );
+    assert!(
+        waited >= std::time::Duration::from_millis(900)
+            && waited < std::time::Duration::from_secs(5),
+        "{waited:?}"
+    );
+    let rows: i64 = app
+        .scalar(&format!(
+            r#"SELECT COUNT(*) FROM app WHERE "trackingTimelineId" = {tl_id} AND title = '{title}'"#
+        ))
+        .await;
+    assert_eq!(rows, 0);
+    holder.rollback().await.unwrap();
+
+    let r = app
+        .post("/activity-logs")
+        .token(&fx.staff2.token)
+        .json(&body)
+        .send()
+        .await;
+    r.assert_status(200);
+    assert_eq!(r.json["message"], "activity log created successfully");
+    app.exec(&format!(
+        r#"DELETE FROM app WHERE "trackingTimelineId" = {tl_id};
+           DELETE FROM "trackingTimeline" WHERE id = {tl_id};"#
+    ))
+    .await;
+}

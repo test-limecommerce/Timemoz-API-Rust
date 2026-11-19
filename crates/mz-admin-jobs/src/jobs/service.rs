@@ -293,10 +293,6 @@ fn not_downloadable(message: &str) -> ApiError {
     ApiError::coded(StatusCode::CONFLICT, "JOB_NOT_DOWNLOADABLE", message)
 }
 
-fn is_lock_timeout(err: &sqlx::Error) -> bool {
-    matches!(err, sqlx::Error::Database(db) if db.code().as_deref() == Some("55P03"))
-}
-
 // ── createJob ───────────────────────────────────────────────────────────────
 
 /// `CreateAdminJobInput`.
@@ -328,7 +324,9 @@ pub async fn create_job(
     let (id, uuid) = match claimed {
         Ok(v) => v,
         Err(ClaimError::Api(e)) => return Err(e),
-        Err(ClaimError::Sql(e)) if mz_core::db::is_unique_violation(&e) || is_lock_timeout(&e) => {
+        Err(ClaimError::Sql(e))
+            if mz_core::db::is_unique_violation(&e) || mz_core::db::is_lock_timeout(&e) =>
+        {
             // Penahan DB `adminJob_one_active_per_company`, atau job Rust lain untuk company
             // yang sama sedang memegang kunci klaim (restore/merge berjalan).
             return Err(job_already_active());

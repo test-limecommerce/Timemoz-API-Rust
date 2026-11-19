@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use mz_core::db::advisory_xact_lock;
+use axum::http::StatusCode;
+use mz_core::db::{advisory_xact_lock_timeout, is_lock_timeout};
 use mz_core::enums::sees_whole_company;
 use mz_core::time::{JsDate, parse_js_date};
 use mz_core::{ApiError, ApiResult, AppState};
@@ -18,6 +19,10 @@ const MAX_APP_NAME: usize = 100;
 const MAX_TITLE: usize = 255;
 const MAX_HOST: usize = 255;
 const MAX_TIMEZONE: usize = 255;
+
+/// Batas menunggu lock per timeline. Transaksi normal selesai dalam milidetik; menunggu
+/// lebih lama hanya menahan koneksi pool dan ikut melambatkan endpoint lain.
+const ACTIVITY_LOG_LOCK_TIMEOUT_MS: u32 = 1_000;
 
 const NON_LEADER_USER_FILTER_MESSAGE: &str = "Only admin and manager can filter by user_uuid";
 
@@ -521,7 +526,12 @@ async fn upsert_app(
     let timezone = truncate(dto.timezone(), MAX_TIMEZONE);
 
     // Cari-lalu-tulis harus berurutan per timeline (TOCTOU retry klien).
-    advisory_xact_lock(tx, &format!("activity-log:app:{timeline_id}")).await?;
+    advisory_xact_lock_timeout(
+        tx,
+        &format!("activity-log:app:{timeline_id}"),
+        ACTIVITY_LOG_LOCK_TIMEOUT_MS,
+    )
+    .await?;
 
     let same_session: Option<SessionRow> = sqlx::query_as(&format!(
         r#"SELECT {APP_COLS} FROM app
@@ -600,7 +610,12 @@ async fn upsert_url(
     );
     let timezone = truncate(dto.timezone(), MAX_TIMEZONE);
 
-    advisory_xact_lock(tx, &format!("activity-log:url:{timeline_id}")).await?;
+    advisory_xact_lock_timeout(
+        tx,
+        &format!("activity-log:url:{timeline_id}"),
+        ACTIVITY_LOG_LOCK_TIMEOUT_MS,
+    )
+    .await?;
 
     let same_session: Option<SessionRow> = sqlx::query_as(&format!(
         r#"SELECT {URL_COLS} FROM url
@@ -707,11 +722,27 @@ pub async fn log_activity(state: &AppState, dto: &CreateActivityLogDto) -> ApiRe
 
     let has_url = !dto.full_url().trim().is_empty();
     // Satu transaksi; lock app selalu diambil sebelum lock url (tanpa urutan terbalik).
+    // Lock yang tak kebagian dalam ACTIVITY_LOG_LOCK_TIMEOUT_MS dijawab 503; kiriman
+    // berikutnya dari sesi yang sama (startAt sama, endAt lebih baru) menutup rentangnya.
     let mut tx = state.db.begin().await?;
-    let mut result = upsert_app(&mut tx, dto, timeline_id, start_at, end_at).await?;
-    if has_url {
-        result = upsert_url(&mut tx, dto, timeline_id, start_at, end_at).await?;
+    let written = async {
+        let mut result = upsert_app(&mut tx, dto, timeline_id, start_at, end_at).await?;
+        if has_url {
+            result = upsert_url(&mut tx, dto, timeline_id, start_at, end_at).await?;
+        }
+        Ok::<_, sqlx::Error>(result)
     }
+    .await;
+    let result = match written {
+        Ok(r) => r,
+        Err(e) if is_lock_timeout(&e) => {
+            return Err(ApiError::message(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Activity log for this tracking timeline is busy, please retry",
+            ));
+        }
+        Err(e) => return Err(e.into()),
+    };
     tx.commit().await?;
     Ok(result)
 }
