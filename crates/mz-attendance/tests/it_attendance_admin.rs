@@ -253,6 +253,82 @@ async fn admin_attendance_list_and_detail() {
     reset(&app, c.id).await;
 }
 
+/// `resolveEventWindow` (Node b1615b3): rentang mulai clockIn − 15 mnt (tak lebih awal dari
+/// clock-out shift sebelumnya); shift tanpa clock-out berakhir sebelum awal rentang shift
+/// berikutnya. Tiap event masuk ke tepat satu shift.
+#[tokio::test]
+async fn admin_attendance_detail_event_window_lead() {
+    let _g = SERIAL.lock().await;
+    let Some((app, _em)) = app("adm_window").await else {
+        return;
+    };
+    let c = app.company().await;
+    let fx = seed(&app, &c).await;
+    let gf_id: i32 = app
+        .scalar(&format!(
+            "SELECT id FROM geofence WHERE uuid = '{}'::uuid",
+            fx.gf_uuid
+        ))
+        .await;
+    let shift = |clock_in: &str, clock_out: Option<&str>| {
+        let out = clock_out.map_or("NULL".to_owned(), |o| format!("'{o}'"));
+        format!(
+            r#"INSERT INTO "mobileShift" ("userId", "companyId", "clockInAt", "clockOutAt", status, source)
+               VALUES ({}, {}, '{clock_in}', {out}, 'auto_closed', 'mobile') RETURNING uuid::text"#,
+            c.staff.id, c.id
+        )
+    };
+    // A: ditinggal tanpa clock-out; B: clock-in esok harinya; C: ditutup 08:00; D: masuk 08:05.
+    let a: String = app.scalar(&shift("2026-06-10 09:07:00", None)).await;
+    let b: String = app
+        .scalar(&shift("2026-06-11 09:07:00", Some("2026-06-11 17:00:00")))
+        .await;
+    let _c: String = app
+        .scalar(&shift("2026-06-12 07:00:00", Some("2026-06-12 08:00:00")))
+        .await;
+    let d: String = app
+        .scalar(&shift("2026-06-12 08:05:00", Some("2026-06-12 17:00:00")))
+        .await;
+    // `accuracy` jadi penanda tiap event.
+    app.exec(&format!(
+        r#"INSERT INTO "geofenceAuditLog" ("geofenceId", "userId", event, lat, lng, accuracy, timestamp)
+           VALUES ({gf_id}, {u}, 'enter', -6.2, 106.8, 1.5, '2026-06-10 08:50:00'),
+                  ({gf_id}, {u}, 'enter', -6.2, 106.8, 2.5, '2026-06-10 08:55:00'),
+                  ({gf_id}, {u}, 'exit',  -6.2, 106.8, 3.5, '2026-06-10 17:00:00'),
+                  ({gf_id}, {u}, 'enter', -6.2, 106.8, 4.5, '2026-06-11 08:55:00'),
+                  ({gf_id}, {u}, 'enter', -6.2, 106.8, 5.5, '2026-06-11 09:06:44'),
+                  ({gf_id}, {u}, 'exit',  -6.2, 106.8, 6.5, '2026-06-12 07:58:00'),
+                  ({gf_id}, {u}, 'enter', -6.2, 106.8, 7.5, '2026-06-12 08:02:00');"#,
+        u = c.staff.id
+    ))
+    .await;
+    let marks = |shift: String| {
+        let app = &app;
+        let token = c.admin.token.clone();
+        async move {
+            let r = app
+                .get(&format!("/v1/admin/clock/attendance/{shift}"))
+                .token(&token)
+                .send()
+                .await;
+            r.assert_ok().assert_no_sql_error();
+            r.data()["geofenceEvents"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|e| e["accuracy"].as_f64().unwrap())
+                .collect::<Vec<_>>()
+        }
+    };
+    // A: 08:52 s.d. B.clockIn − 15 mnt − 1 ms (08:51:59.999 esok hari): 08:50 di luar,
+    // 08:55 hari itu masuk, ping 08:55 & 09:06:44 esok hari milik B.
+    assert_eq!(marks(a).await, [2.5, 3.5]);
+    assert_eq!(marks(b).await, [4.5, 5.5]);
+    // D: awal dibatasi clock-out C (08:00) + 1 ms, jadi 07:58 bukan milik D.
+    assert_eq!(marks(d).await, [7.5]);
+    reset(&app, c.id).await;
+}
+
 #[tokio::test]
 async fn admin_selfies_and_exports() {
     let _g = SERIAL.lock().await;

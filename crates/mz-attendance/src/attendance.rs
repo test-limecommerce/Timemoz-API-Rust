@@ -591,26 +591,60 @@ pub async fn my_attendance(
     }))
 }
 
-/// `resolveEventWindowEnd(shift)`: `clockOutAt`, atau min(sekarang, clockIn + 24 j, clock-in shift
-/// berikutnya − 1 ms).
-async fn event_window_end(db: &PgPool, s: &ShiftRow) -> sqlx::Result<NaiveDateTime> {
+/// Ping geofence kedatangan datang beberapa detik sebelum clock-in; 15 menit memberi ruang
+/// untuk HP yang masuk zona lebih awal tanpa menarik event jauh sebelum shift.
+const EVENT_LEAD_MS: i64 = 15 * 60 * 1000;
+
+/// `resolveEventWindow(shift)`: rentang event lokasi milik satu shift.
+///
+/// Awal: `clockInAt − EVENT_LEAD_MS`, tidak lebih awal dari `clockOutAt` shift sebelumnya
+/// (+1 ms) supaya tak ada event yang tampil di dua shift.
+/// Akhir: `clockOutAt`; bila kosong, yang paling awal dari sekarang, `clockInAt + 24 j`, dan
+/// awal rentang shift berikutnya (clock-in berikutnya − `EVENT_LEAD_MS` − 1 ms).
+async fn event_window(db: &PgPool, s: &ShiftRow) -> sqlx::Result<(NaiveDateTime, NaiveDateTime)> {
+    let prev = async {
+        sqlx::query_scalar::<_, Option<NaiveDateTime>>(
+            r#"SELECT "clockOutAt" FROM "mobileShift"
+                WHERE "userId" = $1 AND "companyId" = $2 AND "clockInAt" < $3
+                ORDER BY "clockInAt" DESC LIMIT 1"#,
+        )
+        .bind(s.user_id)
+        .bind(s.company_id)
+        .bind(s.clock_in_at)
+        .fetch_optional(db)
+        .await
+    };
+    let next = async {
+        if s.clock_out_at.is_some() {
+            return Ok(None);
+        }
+        sqlx::query_scalar::<_, NaiveDateTime>(
+            r#"SELECT "clockInAt" FROM "mobileShift"
+                WHERE "userId" = $1 AND "companyId" = $2 AND "clockInAt" > $3
+                ORDER BY "clockInAt" ASC LIMIT 1"#,
+        )
+        .bind(s.user_id)
+        .bind(s.company_id)
+        .bind(s.clock_in_at)
+        .fetch_optional(db)
+        .await
+    };
+    let (prev, next) = tokio::try_join!(prev, next)?;
+
+    let to_date = |t: i64, fallback: NaiveDateTime| {
+        mz_core::time::JsDate::from_millis(t).map_or(fallback, |d| d.0)
+    };
+    let lead_start = ms(s.clock_in_at) - EVENT_LEAD_MS;
+    let prev_end = prev.flatten().map_or(i64::MIN, |out| ms(out) + 1);
+    let start = to_date(lead_start.max(prev_end), s.clock_in_at);
+
     if let Some(out) = s.clock_out_at {
-        return Ok(out);
+        return Ok((start, out));
     }
-    let next: Option<NaiveDateTime> = sqlx::query_scalar(
-        r#"SELECT "clockInAt" FROM "mobileShift"
-            WHERE "userId" = $1 AND "companyId" = $2 AND "clockInAt" > $3
-            ORDER BY "clockInAt" ASC LIMIT 1"#,
-    )
-    .bind(s.user_id)
-    .bind(s.company_id)
-    .bind(s.clock_in_at)
-    .fetch_optional(db)
-    .await?;
     let max_end = ms(s.clock_in_at) + 24 * 3600 * 1000;
-    let next_end = next.map_or(i64::MAX, |n| ms(n) - 1);
+    let next_end = next.map_or(i64::MAX, |n| ms(n) - EVENT_LEAD_MS - 1);
     let end = ms(now_naive()).min(max_end).min(next_end);
-    Ok(mz_core::time::JsDate::from_millis(end).map_or(s.clock_in_at, |d| d.0))
+    Ok((start, to_date(end, s.clock_in_at)))
 }
 
 #[derive(sqlx::FromRow)]
@@ -648,7 +682,7 @@ pub async fn admin_attendance_detail(
         return Err(ApiError::not_found("Shift not found"));
     };
     let map = geofence_map(db, std::slice::from_ref(&s)).await?;
-    let end = event_window_end(db, &s).await?;
+    let (start, end) = event_window(db, &s).await?;
     let audit = sqlx::query_as::<_, LocEvent>(
         r#"SELECT l.event, g.uuid::text AS gf_uuid, g.name AS gf_name, l.lat, l.lng, l.accuracy, l.timestamp
              FROM "geofenceAuditLog" l JOIN geofence g ON g.id = l."geofenceId"
@@ -657,7 +691,7 @@ pub async fn admin_attendance_detail(
     )
     .bind(s.user_id)
     .bind(company_id)
-    .bind(s.clock_in_at)
+    .bind(start)
     .bind(end)
     .fetch_all(db);
     let visits = async {
@@ -675,7 +709,7 @@ pub async fn admin_attendance_detail(
         )
         .bind(s.user_id)
         .bind(company_id)
-        .bind(s.clock_in_at)
+        .bind(start)
         .bind(end)
         .fetch_all(db)
         .await
