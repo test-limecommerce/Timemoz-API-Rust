@@ -10,7 +10,7 @@ workspace = true
 [dependencies]
 tokio.workspace = true
 tokio-util.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
 tower.workspace = true
 http.workspace = true
 sqlx.workspace = true

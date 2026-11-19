@@ -1,9 +1,10 @@
-//! Penerjemah `csv-parse/sync` 5.5.6 dengan opsi yang dipakai impor libur
-//! (`holiday-import.service.ts:parse`): `bom`, `columns` (fungsi huruf kecil + trim),
-//! `skip_empty_lines`, `trim`, `max_record_size: 2048`, `info`. Pembatas kolom `,`, kutip
-//! `"` (escape = kutip), pembatas baris ditemukan otomatis dari baris pertama
-//! (`\r\n`, `\n`, atau `\r`). Mesin keadaan mengikuti `lib/api/index.js` baris per baris
-//! supaya pesan galat, nomor baris, dan perilaku trim sama.
+//! Penerjemah `csv-parse/sync` 5.5.6 dengan opsi yang dipakai impor CSV Mudah-API
+//! (`holiday-import.service.ts:parse`, `leave-balance-import.ts:parseBalanceCsv`): `bom`,
+//! `columns` (fungsi penormal header), `skip_empty_lines`, `trim`, `max_record_size: 2048`,
+//! `info`, dan `delimiter` satu karakter ([`Options`]). Kutip `"` (escape = kutip), pembatas
+//! baris ditemukan otomatis dari baris pertama (`\r\n`, `\n`, atau `\r`). Mesin keadaan
+//! mengikuti `lib/api/index.js` baris per baris supaya pesan galat, nomor baris, dan perilaku
+//! trim sama.
 
 /// Satu rekaman data: nomor baris (`info.lines`) dan isi kolom.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,8 +20,30 @@ pub struct Parsed {
     pub records: Vec<Record>,
 }
 
+/// Opsi yang berbeda antar-pemakai.
+#[derive(Debug, Clone, Copy)]
+pub struct Options {
+    /// `delimiter` (satu byte ASCII).
+    pub delimiter: u8,
+    /// Fungsi `columns`: memetakan tiap sel header ke nama kolom.
+    pub header: fn(&str) -> String,
+}
+
+/// `h.trim().toLowerCase()` (impor libur).
+pub fn trim_lower(h: &str) -> String {
+    crate::jsfmt::trim(h).to_lowercase()
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            delimiter: b',',
+            header: trim_lower,
+        }
+    }
+}
+
 const QUOTE: u8 = b'"';
-const DELIM: u8 = b',';
 const CR: u8 = 13;
 const LF: u8 = 10;
 const MAX_RECORD_SIZE: usize = 2048;
@@ -47,6 +70,7 @@ fn is_js_space(c: char) -> bool {
 
 struct Machine<'a> {
     buf: &'a [u8],
+    opts: Options,
     lines: usize,
     quoting: bool,
     was_quoting: bool,
@@ -62,9 +86,10 @@ struct Machine<'a> {
 }
 
 impl<'a> Machine<'a> {
-    fn new(buf: &'a [u8]) -> Self {
+    fn new(buf: &'a [u8], opts: Options) -> Self {
         Self {
             buf,
+            opts,
             lines: 1,
             quoting: false,
             was_quoting: false,
@@ -132,13 +157,7 @@ impl<'a> Machine<'a> {
         let record = std::mem::take(&mut self.record);
         self.record_length = 0;
         let Some(headers) = &self.headers else {
-            // `h.trim().toLowerCase()`.
-            self.headers = Some(
-                record
-                    .iter()
-                    .map(|h| mz_core::jsfmt::trim(h).to_lowercase())
-                    .collect(),
-            );
+            self.headers = Some(record.iter().map(|h| (self.opts.header)(h)).collect());
             return Ok(());
         };
         if record.len() != headers.len() {
@@ -184,7 +203,7 @@ impl<'a> Machine<'a> {
                 if chr == QUOTE {
                     if self.quoting {
                         let next = self.at(pos + 1);
-                        let next_is_delimiter = next == Some(DELIM);
+                        let next_is_delimiter = next == Some(self.opts.delimiter);
                         let next_is_record_delimiter = if self.delimiter.is_none() {
                             self.discover(pos + 1) != 0
                         } else {
@@ -233,7 +252,7 @@ impl<'a> Machine<'a> {
                         pos += rd;
                         continue;
                     }
-                    if chr == DELIM {
+                    if chr == self.opts.delimiter {
                         self.on_field();
                         pos += 1;
                         continue;
@@ -276,8 +295,13 @@ impl<'a> Machine<'a> {
     }
 }
 
-/// `parse(buffer, opts)`: `Err(message)` = `CsvError.message`.
+/// `parse(buffer, opts)` dengan opsi impor libur (`,`, header `trim().toLowerCase()`).
 pub fn parse(input: &[u8]) -> Result<Parsed, String> {
+    parse_with(input, Options::default())
+}
+
+/// `parse(buffer, opts)`: `Err(message)` = `CsvError.message`.
+pub fn parse_with(input: &[u8], opts: Options) -> Result<Parsed, String> {
     // `bom: true`: BOM UTF-8 dibuang; BOM UTF-16LE mengganti penyandian seluruh berkas.
     let decoded;
     let mut buf = input;
@@ -295,7 +319,7 @@ pub fn parse(input: &[u8]) -> Result<Parsed, String> {
         decoded = String::from_utf16_lossy(&units).into_bytes();
         buf = &decoded;
     }
-    Machine::new(buf).run()
+    Machine::new(buf, opts).run()
 }
 
 #[cfg(test)]

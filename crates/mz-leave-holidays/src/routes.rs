@@ -25,9 +25,9 @@ use crate::holiday::{
     insert_row, joint_leave_name, sort_by_date,
 };
 use crate::import::{
-    self, Classification, ParsedRow, assert_csv_file, classify, real_date, valid_date_keys,
+    self, Classification, ParsedRow, assert_csv_file, classify, read_upload, real_date,
+    valid_date_keys,
 };
-use crate::upload::read_upload;
 
 /// Isi `holiday-import.template.csv` (dengan BOM).
 const TEMPLATE: &[u8] = include_bytes!("../assets/holiday-import.template.csv");

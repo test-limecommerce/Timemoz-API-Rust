@@ -3,13 +3,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use axum::http::StatusCode;
 use chrono::NaiveDate;
 use mz_core::ApiError;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::csv;
+use mz_core::csv_parse as csv;
 
 /// `MAX_HOLIDAY_IMPORT_BYTES`.
 pub const MAX_IMPORT_BYTES: usize = 262_144;
@@ -18,22 +17,7 @@ pub const MAX_IMPORT_ROWS: usize = 366;
 
 const REQUIRED_HEADERS: [&str; 4] = ["tanggal", "nama", "jenis", "potong_cuti"];
 
-/// Windows/browser kirim vnd.ms-excel, curl kirim octet-stream; isi tetap divalidasi parser.
-const ALLOWED_MIMETYPES: [&str; 5] = [
-    "text/csv",
-    "application/csv",
-    "text/plain",
-    "application/vnd.ms-excel",
-    "application/octet-stream",
-];
-
-/// `Express.Multer.File` (`originalname`, `mimetype`, `buffer`).
-#[derive(Debug, Clone)]
-pub struct Upload {
-    pub original_name: String,
-    pub mime: String,
-    pub bytes: Vec<u8>,
-}
+pub use mz_core::upload::{Upload, assert_csv_file, invalid_file};
 
 /// `ParsedHolidayRow`: `row` = nomor baris file (header = baris 1).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,38 +63,12 @@ pub struct Classification {
     pub deducting_joint_leave_count: usize,
 }
 
-/// `invalidFile(message)`: 422 `{code:'IMPORT_INVALID_FILE', message}`.
-pub fn invalid_file(message: impl Into<String>) -> ApiError {
-    ApiError::coded(
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "IMPORT_INVALID_FILE",
-        message,
-    )
-}
-
 /// `ImportFileExceptionFilter('256 KB')`: 413 `{code:'IMPORT_FILE_TOO_LARGE', message}`.
-pub fn file_too_large() -> ApiError {
-    ApiError::coded(
-        StatusCode::PAYLOAD_TOO_LARGE,
-        "IMPORT_FILE_TOO_LARGE",
-        format!("File exceeds the {} KB limit", MAX_IMPORT_BYTES / 1024),
-    )
-}
+pub const LIMIT_LABEL: &str = "256 KB";
 
-/// `assertCsvFile(file)`.
-pub fn assert_csv_file(file: Option<&Upload>) -> Result<(), ApiError> {
-    let Some(file) = file.filter(|f| !f.bytes.is_empty()) else {
-        return Err(invalid_file("No file uploaded"));
-    };
-    if !file.original_name.to_ascii_lowercase().ends_with(".csv") {
-        return Err(invalid_file("File must have a .csv extension"));
-    }
-    if !ALLOWED_MIMETYPES.contains(&file.mime.to_lowercase().as_str()) {
-        return Err(invalid_file(
-            "File type is not supported, upload a CSV file",
-        ));
-    }
-    Ok(())
+/// `FileInterceptor('file', { limits: { fileSize: 256 KB } })` + `HOLIDAY_IMPORT_FILE_FILTER`.
+pub async fn read_upload(req: axum::extract::Request) -> Result<Option<Upload>, ApiError> {
+    mz_core::upload::read_upload(req, MAX_IMPORT_BYTES, LIMIT_LABEL).await
 }
 
 /// `parse(buffer)`.
@@ -268,6 +226,7 @@ pub fn valid_date_keys(rows: &[ParsedRow]) -> Vec<NaiveDate> {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
+    use axum::http::StatusCode;
 
     const HEADER: &str = "tanggal,nama,jenis,potong_cuti";
 

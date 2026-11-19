@@ -30,7 +30,7 @@ use crate::dto::{AdjustLeaveBalanceDto, BalancesQuery, YearQuery};
 use crate::validate::{node_500, parse_id};
 
 /// `new Date().getFullYear()` (produksi `TZ=UTC`).
-fn current_year() -> i32 {
+pub(crate) fn current_year() -> i32 {
     now_naive().year()
 }
 

@@ -1,4 +1,4 @@
-//! Port `src/leave-types/**` (7 route) dan `src/leave-policies/**` (20 route) dari Mudah-API.
+//! Port `src/leave-types/**` (7 route) dan `src/leave-policies/**` (23 route) dari Mudah-API.
 //!
 //! Kedua controller: `@RequireFeature('leave-config')`, `@SkipThrottle()`,
 //! `@UseGuards(JwtAuthGuard, RolesGuard)`; `@Roles` per handler (baca jenis cuti: semua peran
@@ -9,6 +9,7 @@
 //! meliputi `leave*`) dan Node tidak memakai cache untuk modul ini.
 //! Deviasi: `plan/deviations/mz-leave-config.md`.
 
+pub mod balance_import;
 pub mod balances;
 mod common;
 pub mod dto;
@@ -139,10 +140,22 @@ pub fn router(state: &AppState) -> Router<AppState> {
             "/leave-policies/tiers/{tier_id}/assign/{user_id}",
             g(MANAGE, put(employees::assign_employee_tier)),
         )
-        // ── saldo (5) ──
+        // ── saldo (8) ──
         .route(
             "/leave-policies/balances",
             g(MANAGE, get(balances::get_balances)),
+        )
+        .route(
+            "/leave-policies/balances/import-template",
+            g(MANAGE, get(balance_import::import_template)),
+        )
+        .route(
+            "/leave-policies/balances/import/preview",
+            g(MANAGE, post(balance_import::import_preview)),
+        )
+        .route(
+            "/leave-policies/balances/import",
+            g(MANAGE, post(balance_import::import_balances)),
         )
         .route(
             "/leave-policies/balances/initialize",
