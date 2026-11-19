@@ -10,3 +10,6 @@ logs/
 .playwright-mcp
 tools
 mudah-rs
+
+# Mark-of-the-Web dari Windows saat menyalin file ke WSL lewat Explorer
+*:Zone.Identifier
