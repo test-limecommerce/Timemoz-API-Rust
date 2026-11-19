@@ -1,0 +1,13 @@
+-- Audit log untuk role custom (docs/custom_roles.md §11 F12).
+--
+-- Satu nilai enum, nol tabel baru: `accessLevel` diaudit sebagai entitas dan
+-- `rolePermission` sebagai tabel pendampingnya (§4.2 docs/audit_log.md), jadi
+-- keduanya menumpang tabel `auditLog` yang sudah ada.
+--
+-- `IF NOT EXISTS` supaya migration ini aman dijalankan ulang pada database dev
+-- yang nilai enum-nya sudah lebih dulu masuk lewat `prisma db push`.
+--
+-- `ALTER TYPE ... ADD VALUE` boleh berada di dalam transaksi sejak PostgreSQL 12
+-- selama nilai barunya tidak DIPAKAI di transaksi yang sama — dan di sini tidak
+-- ada yang memakainya. Produksi berjalan di PostgreSQL 18.
+ALTER TYPE "AuditEntityType" ADD VALUE IF NOT EXISTS 'role';

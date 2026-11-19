@@ -8,7 +8,9 @@ tidak pernah melayani bersamaan, tetapi memakai Postgres, Redis, GCS, dan
 [plan/PLAN.md](plan/PLAN.md) dan [plan/CUTOVER.md](plan/CUTOVER.md)).
 
 - Binary: `mudah-rs` (crate `crates/mz-server`), port bawaan **3100**.
-- Skema database dimiliki Mudah-API (Prisma). Rust **tidak** menjalankan migrasi.
+- Skema database dan migrasinya ada di [`db/`](#migrasi-database); diterapkan dengan
+  `db/migrate.sh` (bash + `psql`, tanpa Node). Binary `mudah-rs` sendiri **tidak**
+  menjalankan migrasi saat start.
 - Cek hidup: `GET /health` → `{"status":"ok","permissions":"ok","runtime":"rust"}`.
 
 ## Daftar isi
@@ -18,15 +20,16 @@ tidak pernah melayani bersamaan, tetapi memakai Postgres, Redis, GCS, dan
 3. [Build](#build)
 4. [Menjalankan untuk development](#menjalankan-untuk-development)
 5. [Test](#test)
-6. [Deploy ke produksi](#deploy-ke-produksi)
-7. [Masalah yang sering muncul](#masalah-yang-sering-muncul)
+6. [Migrasi database](#migrasi-database)
+7. [Deploy ke produksi](#deploy-ke-produksi)
+8. [Masalah yang sering muncul](#masalah-yang-sering-muncul)
 
 ## Prasyarat
 
 | Kebutuhan | Catatan |
 |---|---|
 | Rust **1.99.1** | Dipasang otomatis oleh `rustup` dari `rust-toolchain.toml` (beserta `rustfmt` dan `clippy`). |
-| PostgreSQL | Database yang sama dengan Mudah-API, skema sudah dimigrasi Prisma. Uji integrasi dan paritas butuh PostgreSQL **17**. |
+| PostgreSQL | Database yang sama dengan Mudah-API, semua migrasi `db/migrations` sudah diterapkan. Uji integrasi dan paritas butuh PostgreSQL **17**. |
 | Redis | Yang sama dengan Mudah-API. |
 | Disk | Folder `target/` bisa puluhan GB. Lihat [Masalah yang sering muncul](#masalah-yang-sering-muncul). |
 
@@ -131,15 +134,17 @@ File `crates/mz-server/tests/it_*.rs` memakai harness `crates/mz-testkit`:
 - Redis memakai DB 15 supaya tidak bercampur dengan data lokal Node (DB 0).
 
 **Siapkan template sekali.** Template berisi data uji yang **sudah dianonimkan**
-dan skema Prisma terbaru:
+dan semua migrasi `db/migrations`:
 
 ```bash
 createdb -T <database dump lokal yang sudah dianonimkan> mudah_test_template
-# di repo Mudah-API, terapkan migrasi Prisma ke template:
-DATABASE_URL=postgres://…/mudah_test_template npx prisma migrate deploy
 ```
 
-Setiap ada migrasi Prisma baru, terapkan juga ke `mudah_test_template`.
+Setiap ada migrasi baru, terapkan juga ke `mudah_test_template`:
+
+```bash
+MIGRATION_DATABASE_URL=postgres://…/mudah_test_template db/migrate.sh --no-backup <nama>
+```
 Jangan mengubah `mudah_parity_template` atau `mudah_parity` karena dipakai
 harness paritas.
 
@@ -168,7 +173,7 @@ cargo test -p mz-orders --test it_orders_api
 tools/test-pg-tmpfs.sh status | stop | destroy
 ```
 
-Setelah ada migrasi Prisma baru di template sumber, jalankan `destroy` lalu
+Setelah ada migrasi baru di template sumber, jalankan `destroy` lalu
 `up` supaya salinan di RAM ikut diperbarui.
 
 | Variabel | Bawaan | Fungsi |
@@ -194,6 +199,92 @@ tools/parity/up.sh
 tools/parity/run.sh --only-read
 tools/parity/down.sh
 ```
+
+## Migrasi database
+
+Skema database dimiliki repo ini (dipindah dari `prisma/` Mudah-API pada
+2026-11-19, staging `1d581b8`). Semua alatnya bash + `psql`/`pg_dump`, tanpa
+Node:
+
+| Berkas | Isi |
+|---|---|
+| `db/migrations/<timestamp>_<nama>/migration.sql` | Semua migrasi, urut nama folder. Migrasi yang sudah dirilis **tidak boleh** diubah. |
+| `db/schema.prisma` | Gambaran skema lengkap (acuan field/urutan kolom, `dmmf.json`, `mz-audit/columns.rs`). Ubah bersama migrasinya. |
+| `db/migrate.sh` | Menerapkan satu migrasi: blokir perubahan data → cek catatan `_db_migrations` → backup `pg_dump` → `psql --single-transaction` (+ catatan) → verifikasi DB guard. Port `npm run db:migrate`. |
+| `db/verify-guards.sql` | Daftar partial index, CHECK, dan trigger yang wajib ada (pengganti `prisma/apply-partial-indexes.js`). Hanya membaca katalog. |
+| `db/backup-db.sh`, `db/restore-db.sh` | Backup harian (cron) dan restore, port dari `scripts/` Mudah-API. |
+| `db/sync-from-node.sh` | **Masa transisi saja**: salin migrasi baru dari repo Node. |
+
+```bash
+db/migrate.sh --status                  # migrasi yang belum diterapkan di DB ini
+db/migrate.sh                           # terapkan migrasi terbaru (konfirmasi dulu)
+db/migrate.sh divisions                 # pilih dengan sebagian nama folder
+db/migrate.sh --list                    # 10 migrasi terakhir (tanpa DB)
+db/migrate.sh --verify-guards           # periksa DB guard saja
+```
+
+Tetap **satu migrasi per jalan** dan urutan tidak dipaksa (seperti Node), dengan
+dua pengaman tambahan:
+
+- **Catatan migrasi** — tabel `_db_migrations` (nama, checksum sha256 file,
+  waktu, user, mode) diisi dalam transaksi yang sama dengan migrasinya.
+  Migrasi yang sudah tercatat **ditolak** (menjalankan ulang bisa mengubah data
+  lagi tanpa error); `--force` untuk sengaja menjalankan ulang (di produksi
+  harus mengetik nama migrasinya). `--status` juga melaporkan file migrasi yang
+  berubah sesudah diterapkan. Migrasi lebih lama yang belum tercatat hanya
+  diperingatkan.
+- **Blokir perubahan data** — migrasi berisi `DROP TABLE/COLUMN/SCHEMA/TYPE/
+  SEQUENCE/DATABASE`, `TRUNCATE`, `DELETE FROM`, `UPDATE … SET` (termasuk
+  `ON CONFLICT DO UPDATE`), `ALTER COLUMN … TYPE`, atau `CASCADE` (selain aksi
+  FK) ditolak sebelum apa pun dijalankan, dengan daftar baris terkait. Kalau
+  memang disengaja: `--allow-destructive`; di produksi masih harus mengetik
+  `HAPUS`. Backup tetap wajib.
+
+**Sekali per database** (database lama yang dimigrasi manual sebelum ada
+catatan): tandai migrasi yang sudah ada tanpa menjalankannya, lalu cek:
+
+```bash
+db/migrate.sh --baseline <migrasi terakhir yang PASTI sudah ada di DB itu>
+db/migrate.sh --status
+```
+
+Sebelum di-baseline, `db/migrate.sh` menolak menerapkan migrasi apa pun ke
+database itu. `mudah_test_template` lokal sudah di-baseline s.d.
+`20261119100000` (2026-11-19).
+
+Koneksi: `MIGRATION_DATABASE_URL` (koneksi **langsung**, DigitalOcean port
+25060, bukan pool 25061), selain itu `DATABASE_URL`; masing-masing dari
+environment → `/etc/mudah-api-backup.conf` → `.env` root project. Database
+produksi wajib dikonfirmasi dengan mengetik namanya, dan backup tidak bisa
+dilewati. Client `psql`/`pg_dump` harus versi mayor ≥ server.
+
+Bisa dijalankan dari laptop (IP harus ada di Trusted Sources database) atau
+dari server: `deploy/install-systemd.sh` memasang isi `db/` ke `/opt/mudah-db`
+(milik root, terpisah dari `/opt/mudah-rs`), jadi server tidak butuh checkout
+repo mana pun:
+
+```bash
+sudo /opt/mudah-db/migrate.sh <nama>
+```
+
+**Menulis migrasi baru:**
+
+1. Buat `db/migrations/<YYYYMMDDHHMMSS>_<nama>/migration.sql` dan ubah
+   `db/schema.prisma` sesuai. `CREATE/DROP INDEX CONCURRENTLY` harus satu
+   statement per folder (dijalankan di luar transaksi).
+2. Partial/expression index, CHECK, atau trigger baru: tambahkan barisnya ke
+   `db/verify-guards.sql`.
+3. Kolom baru/berubah: perbarui query sqlx, `crates/mz-audit/src/columns.rs`,
+   dan `crates/mz-admin-jobs/src/company_data/dmmf.json` +
+   `tests/golden/scope_plan.json` (kalau tidak, backup/restore company gagal
+   `SCHEMA_MISMATCH`).
+4. Terapkan ke `mudah_test_template`, jalankan uji crate terkait, lalu
+   terapkan ke produksi **sebelum** binary yang membutuhkannya di-deploy.
+
+**Masa transisi** (selama perubahan skema masih ditulis di repo Node): setelah
+port commit Node yang membawa migrasi, jalankan
+`db/sync-from-node.sh ../Mudah-API` dari branch yang memuat semua migrasi,
+periksa `git diff db/`, lalu commit bersama port-nya.
 
 ## Deploy ke produksi
 

@@ -1,0 +1,11 @@
+-- private_file_access.md §5.4 — link share report wajib punya masa berlaku.
+--
+-- Postgres mengisi baris yang SUDAH ADA dengan nilai default saat kolom ditambahkan
+-- (default volatile `now()` dievaluasi sekali per baris saat ALTER), jadi semua link
+-- share lama kedaluwarsa 1 hari setelah migration ini dijalankan. Disengaja (keputusan
+-- user 24 Sep 2026): BERI TAHU pengguna sebelum menjalankannya di produksi.
+--
+-- Aplikasi selalu mengisi "expiresAt" secara eksplisit saat membuat share
+-- (`expiresInDays`, default 1); default DB di sini hanya pengaman, dan juga yang membuat
+-- `prisma db push` di DB dev tidak gagal pada tabel yang sudah berisi data.
+ALTER TABLE "shareReport" ADD COLUMN "expiresAt" TIMESTAMP(3) NOT NULL DEFAULT (now() + interval '1 day');

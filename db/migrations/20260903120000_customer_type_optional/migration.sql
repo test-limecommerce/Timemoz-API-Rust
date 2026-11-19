@@ -1,0 +1,11 @@
+-- docs/customers.md §14 — `customer.typeId` jadi opsional.
+--
+-- Melonggarkan constraint, bukan mengetatkannya: setiap baris yang sudah ada tetap
+-- sah sesudah ini, dan tidak ada backfill yang dibutuhkan. FK-nya sendiri tidak
+-- disentuh — `onDelete: Restrict` tetap berlaku untuk baris yang typeId-nya terisi,
+-- dan Postgres tidak pernah menegakkan FK atas nilai NULL.
+--
+-- ARAH BALIKNYA TIDAK OTOMATIS. Kalau suatu saat kolom ini diwajibkan lagi, setiap
+-- baris ber-`typeId IS NULL` harus diisi lebih dulu; `SET NOT NULL` akan gagal
+-- selama masih ada satu pun yang kosong.
+ALTER TABLE "customer" ALTER COLUMN "typeId" DROP NOT NULL;

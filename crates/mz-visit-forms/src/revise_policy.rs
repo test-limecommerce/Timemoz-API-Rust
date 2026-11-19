@@ -281,7 +281,7 @@ mod tests {
     fn modes_match_prisma_enum() {
         let schema = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../Mudah-API/prisma/schema.prisma"
+            "/../../db/schema.prisma"
         ));
         if let Ok(schema) = schema {
             let block = schema

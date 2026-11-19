@@ -1,0 +1,21 @@
+-- Aktivasi penegakan permission per company (docs/custom_roles.md §11 F13, §17).
+--
+-- Satu kolom, `NOT NULL DEFAULT false`, dan default itulah seluruh isinya:
+-- setiap company yang sudah ada mendarat di shadow mode, jadi migration ini
+-- tidak mengubah hak akses satu orang pun. Rollout menyalakannya satu company
+-- sekaligus:
+--
+--   UPDATE "company" SET "customRolesEnabled" = true WHERE id = <company>;
+--
+-- dan rollback (§17) mematikannya lagi — tanpa deploy, tanpa menyentuh env.
+-- Perubahan terasa paling lama 60 detik, sama dengan seluruh setelan company
+-- lain di sistem ini (`FeatureModulesService`, `RolesGuard`, `PermissionsService`).
+--
+-- `IF NOT EXISTS` supaya migration ini aman dijalankan ulang pada database dev
+-- yang kolomnya sudah lebih dulu masuk lewat `prisma db push` (§3.7).
+--
+-- Tidak ada rewrite tabel: sejak PostgreSQL 11, `ADD COLUMN ... NOT NULL
+-- DEFAULT <konstanta>` ditulis ke katalog, bukan ke setiap baris. Produksi
+-- berjalan di PostgreSQL 18.
+ALTER TABLE "company"
+  ADD COLUMN IF NOT EXISTS "customRolesEnabled" BOOLEAN NOT NULL DEFAULT false;

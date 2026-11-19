@@ -38,6 +38,17 @@ chmod 600 "$APP_DIR/.env"
 
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
+# Migrasi + script backup/restore database (db/migrate.sh, db/backup-db.sh) di
+# direktori TERPISAH milik root, bukan di $APP_DIR: backup-db.sh dijalankan cron root,
+# dan $APP_DIR milik $APP_USER (bisa mengganti isinya). Koneksi & BACKUP_DIR dibaca dari
+# /etc/mudah-api-backup.conf (lihat db/backup-db.sh).
+DB_DIR=/opt/mudah-db
+install -d -o root -g root -m 755 "$DB_DIR"
+rm -rf "$DB_DIR/migrations" "$DB_DIR/lib"
+cp -r db/. "$DB_DIR/"
+chown -R root:root "$DB_DIR"
+chmod 755 "$DB_DIR"/*.sh
+
 # Unit systemd
 install -m 644 "$UNIT" /etc/systemd/system/mudah-rs.service
 systemctl daemon-reload
