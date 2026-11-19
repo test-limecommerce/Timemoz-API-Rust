@@ -426,6 +426,33 @@ async fn it_companies_patch() {
             .send()
             .await,
     );
+    // locationHistorySyncIntervalMinutes: `@ValidateIf(!== undefined)` → null ikut divalidasi.
+    let lh = "locationHistorySyncIntervalMinutes";
+    for (value, expected) in [
+        (
+            Value::Null,
+            vec![
+                format!("{lh} must not be greater than 1440"),
+                format!("{lh} must not be less than 1"),
+                format!("{lh} must be an integer number"),
+            ],
+        ),
+        (json!(0), vec![format!("{lh} must not be less than 1")]),
+        (
+            json!(1441),
+            vec![format!("{lh} must not be greater than 1440")],
+        ),
+        (json!(1.5), vec![format!("{lh} must be an integer number")]),
+    ] {
+        let res = app
+            .patch(&uri)
+            .token(sa)
+            .json(&json!({"name": "X", "timeZone": "UTC", lh: value}))
+            .send()
+            .await;
+        res.assert_status(400);
+        assert_eq!(res.json["message"], json!(expected), "{value}");
+    }
     // Bukan anggota company itu → 401 pesan khusus (bukan dari RolesGuard).
     let res = app
         .patch(&format!("/companies/{}", ctx.other_uuid))
@@ -452,7 +479,8 @@ async fn it_companies_patch() {
         .json(&json!({
             "name": "  IT Renamed  ", "timeZone": "Asia/Jakarta", "telp": "0812",
             "address": " Jl. Test ", "imageBlurRoles": ["ADMIN"], "maxOrderDiscountPercent": "12.5",
-            "dailyReportSentAt": "2026-11-16T08:30:00.000Z", "maxUsers": 9999
+            "dailyReportSentAt": "2026-11-16T08:30:00.000Z", "maxUsers": 9999,
+            "locationHistorySyncIntervalMinutes": 30
         }))
         .send()
         .await;
@@ -467,6 +495,14 @@ async fn it_companies_patch() {
     assert_eq!(d["maxOrderDiscountPercent"], "12.5");
     assert_eq!(d["dailyReportSentAt"], "1970-01-01T08:30:00.000Z");
     assert!(d.get("profilePictureFullPath").is_none());
+    assert_eq!(d["locationHistorySyncIntervalMinutes"], 30);
+    // Urutan kunci = urutan schema Prisma: tepat sesudah mobileBlockMockLocation.
+    let keys: Vec<&str> = d.as_object().unwrap().keys().map(String::as_str).collect();
+    let at = keys
+        .iter()
+        .position(|k| *k == "locationHistorySyncIntervalMinutes")
+        .unwrap();
+    assert_eq!(keys[at - 1], "mobileBlockMockLocation", "{keys:?}");
     assert_eq!(d["workPattern"]["current"]["workDays"], 5);
     assert_eq!(
         app.scalar::<i32>(&format!(
@@ -698,7 +734,7 @@ async fn it_companies_patch() {
            UPDATE company SET name = $q${name}$q$, telp = {telp}, address = {address}, "timeZone" = $q${tz}$q$,
              "workweekStartDay" = {week}, "storeVisitMinDurationMinutes" = {min},
              "storeVisitMaxDurationHours" = {max}, "imageBlurRoles" = ARRAY[]::text[],
-             "maxOrderDiscountPercent" = NULL,
+             "maxOrderDiscountPercent" = NULL, "locationHistorySyncIntervalMinutes" = 15,
              "moduleTimeTrackingEnabled" = true, "moduleSalesTrackerEnabled" = true WHERE id = {id};"#,
         id = c.id,
         name = orig["name"].as_str().unwrap(),

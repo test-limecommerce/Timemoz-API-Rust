@@ -239,6 +239,17 @@ impl Validate for UpdateBody {
         opt_bool(&mut out, m, "storeVisitEnforceGroupScope");
         opt_int(&mut out, m, "storeVisitMinDurationMinutes", 0, 1440);
         opt_bool(&mut out, m, "storeVisitCountsAsAttendance");
+        // `@ValidateIf(v !== undefined)`, bukan `@IsOptional()`: null ikut divalidasi (→ 400),
+        // karena kolomnya NOT NULL.
+        if let Some(v) = m.get("locationHistorySyncIntervalMinutes") {
+            check_int_range(
+                &mut out,
+                "locationHistorySyncIntervalMinutes",
+                v.as_f64().filter(|_| v.is_number()),
+                1,
+                1440,
+            );
+        }
         enum_array(&mut out, m, "modules", MODULES, true);
         // maxOrderDiscountPercent: IsString, IsOptional, Matches.
         if let Some(v) = given(m, "maxOrderDiscountPercent") {
@@ -347,6 +358,7 @@ impl UpdateBody {
         int(&mut sets, "storeVisitMaxAccuracyMeters")?;
         int(&mut sets, "storeVisitMaxDurationHours")?;
         int(&mut sets, "storeVisitMinDurationMinutes")?;
+        int(&mut sets, "locationHistorySyncIntervalMinutes")?;
 
         let boolean = |sets: &mut Vec<_>, key: &'static str| -> ApiResult<()> {
             match m.get(key) {

@@ -69,6 +69,8 @@ struct CompanyRow {
     mobile_require_selfie: bool,
     #[sqlx(rename = "mobileBlockMockLocation")]
     mobile_block_mock_location: bool,
+    #[sqlx(rename = "locationHistorySyncIntervalMinutes")]
+    location_history_sync_interval_minutes: i32,
     #[sqlx(rename = "isSupportOfflineMode")]
     is_support_offline_mode: bool,
     #[sqlx(rename = "storeVisitDefaultRadiusMeters")]
@@ -140,7 +142,8 @@ struct CompanyRow {
 
 const COMPANY_SQL: &str = r#"SELECT c.id, c.uuid::text AS uuid, c.name, c.telp, c.address, c."websiteURL",
     c."timeZone", c.currency, c."workweekStartDay", c."dailyReportSentAt", c."profilePictureFullPath",
-    c."isAgencyMode", c."isTrial", c."mobileRequireSelfie", c."mobileBlockMockLocation", c."isSupportOfflineMode",
+    c."isAgencyMode", c."isTrial", c."mobileRequireSelfie", c."mobileBlockMockLocation",
+    c."locationHistorySyncIntervalMinutes", c."isSupportOfflineMode",
     c."storeVisitDefaultRadiusMeters", c."storeVisitMaxAccuracyMeters", c."storeVisitBlockMockLocation",
     c."storeVisitRequirePhotos", c."storeVisitAllowOverride", c."storeVisitMaxDurationHours",
     c."storeVisitMinDurationMinutes", c."storeVisitEnforceGroupScope", c."storeVisitCountsAsAttendance",
@@ -364,6 +367,9 @@ pub async fn get_config(state: &AppState, user_id: i32) -> ApiResult<Value> {
             "attendance": {
                 "requireSelfie": c.mobile_require_selfie,
                 "blockMockLocation": c.mobile_block_mock_location,
+            },
+            "locationHistory": {
+                "syncIntervalMinutes": c.location_history_sync_interval_minutes,
             },
             "break": {
                 "maxMinutesLunch": bp.lunch,

@@ -76,6 +76,7 @@ pub static COLUMNS: &[(&str, &[Column])] = &[
             ("googleCalendarWebhookExpiry", Kind::Timestamp, false),
             ("mobileRequireSelfie", Kind::Bool, false),
             ("mobileBlockMockLocation", Kind::Bool, false),
+            ("locationHistorySyncIntervalMinutes", Kind::Int, false),
             ("isSupportOfflineMode", Kind::Bool, false),
             ("useActivityTrack", Kind::Bool, false),
             ("imageBlurEnabled", Kind::Bool, false),

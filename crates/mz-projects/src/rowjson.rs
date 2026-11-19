@@ -159,6 +159,7 @@ pub const COMPANY_KEYS: &[&str] = &[
     "googleCalendarWebhookExpiry",
     "mobileRequireSelfie",
     "mobileBlockMockLocation",
+    "locationHistorySyncIntervalMinutes",
     "isSupportOfflineMode",
     "useActivityTrack",
     "imageBlurEnabled",

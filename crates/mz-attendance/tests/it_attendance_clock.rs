@@ -764,6 +764,7 @@ async fn company_config_and_signed_logo() {
             "company",
             "modules",
             "attendance",
+            "locationHistory",
             "break",
             "storeVisit",
             "leave",
@@ -775,6 +776,7 @@ async fn company_config_and_signed_logo() {
     );
     assert_eq!(d["company"]["id"], c.uuid.as_str());
     assert_eq!(d["break"]["maxMinutesLunch"], 60);
+    assert_eq!(d["locationHistory"], json!({ "syncIntervalMinutes": 15 }));
     assert_eq!(d["modules"], json!(["TIME_TRACKING", "SALES_TRACKER"]));
     assert_eq!(d["subscriptionLock"]["locked"], false);
     assert!(d["company"]["pricingTier"].is_object());
