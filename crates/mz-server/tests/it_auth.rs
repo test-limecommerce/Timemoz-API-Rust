@@ -987,6 +987,17 @@ async fn create_organization() {
         .await
         .unwrap();
     assert_eq!(tz.as_deref(), Some("Asia/Jakarta"));
+    // Node c7cede8: panggilan ulang tidak mengubah modul company.
+    let r = post(&app, "/auth/onboarding/create-organization")
+        .token(&token)
+        .json(&json!({"name": "Org Kedua", "modules": ["TIME_TRACKING"]}))
+        .send()
+        .await;
+    r.assert_ok();
+    assert_eq!(
+        r.data()["modules"],
+        json!(["TIME_TRACKING", "SALES_TRACKER"])
+    );
     assert!(audit_rows(&app, &format!(r#"SELECT COUNT(*) FROM "auditLog" WHERE "companyId" = {} AND "entityType"::text = 'company' AND action::text = 'update'"#, a.company_id)).await >= 1);
 }
 

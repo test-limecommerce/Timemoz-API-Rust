@@ -114,7 +114,10 @@ async fn create_organization_inner(
     if is_first && let Some(v) = time_zone {
         qb.push(r#", "timeZone" = "#).push_bind(v);
     }
-    if let Some((tt, st)) = flags {
+    // Sama dengan `timeZone`: hanya pembuatan pertama. Endpoint ini tanpa role guard,
+    // jadi tanpa ini STAFF/GUEST mana pun bisa mematikan modul seluruh company dengan
+    // memanggil ulang onboarding; setelahnya modul diubah lewat endpoint fitur company.
+    if is_first && let Some((tt, st)) = flags {
         qb.push(r#", "moduleTimeTrackingEnabled" = "#).push_bind(tt);
         qb.push(r#", "moduleSalesTrackerEnabled" = "#).push_bind(st);
     }
@@ -169,7 +172,7 @@ async fn create_organization_inner(
     }
     tx.commit().await?;
 
-    if modules.is_some() {
+    if is_first && modules.is_some() {
         invalidate_company(state, company_id);
     }
     let module_list: Vec<&'static str> = flags_to_modules(
