@@ -170,6 +170,7 @@ pub async fn reset(app: &TestApp, company_id: i32) {
     app.exec(&format!(
         r#"DELETE FROM "mobileShift" WHERE "companyId" = {company_id};
            DELETE FROM "geofenceAuditLog" WHERE "geofenceId" IN (SELECT id FROM geofence WHERE "companyId" = {company_id});
+           DELETE FROM "userLocationPing" WHERE "companyId" = {company_id};
            DELETE FROM geofence WHERE "companyId" = {company_id};
            DELETE FROM "negativeZone" WHERE "companyId" = {company_id};
            DELETE FROM "mobileBreakPolicy" WHERE "companyId" = {company_id};

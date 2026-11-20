@@ -45,7 +45,8 @@ async fn setup() -> Option<Ctx> {
              CROSS JOIN (VALUES ('READ'), ('WRITE'), ('DELETE')) AS a(a)
              WHERE al."isSystem" ON CONFLICT DO NOTHING;
            DELETE FROM geofence WHERE "companyId" = {cid};
-           DELETE FROM "negativeZone" WHERE "companyId" = {cid};"#,
+           DELETE FROM "negativeZone" WHERE "companyId" = {cid};
+           DELETE FROM "userLocationPing" WHERE "companyId" = {cid};"#,
         cid = fx.id
     ))
     .await;
@@ -555,7 +556,7 @@ async fn geofence_event_log_and_history() {
         b
     };
 
-    // Tanpa geofence sama sekali: tidak dicatat, tetap 201.
+    // Tanpa geofence sama sekali: disimpan sebagai ping lokasi (`userLocationPing`), 201.
     let r = app
         .post("/mobile/geofences/event")
         .token(&c.fx.staff.token)
@@ -565,9 +566,18 @@ async fn geofence_event_log_and_history() {
     r.assert_status(201);
     assert_eq!(
         r.json,
-        json!({"data": {"logged": false, "reason": "NO_APPLICABLE_GEOFENCE",
-                        "geofenceId": null, "event": null, "distanceMeters": null}})
+        json!({"data": {"logged": true, "geofenceId": null, "event": null, "distanceMeters": null}})
     );
+    let pings: Vec<(i32, f64, f64, f64, i64)> = sqlx::query_as(
+        r#"SELECT "companyId", lat, lng, accuracy,
+                  (EXTRACT(EPOCH FROM "timestamp") * 1000)::bigint
+             FROM "userLocationPing" WHERE "userId" = $1"#,
+    )
+    .bind(c.fx.staff.id)
+    .fetch_all(app.db())
+    .await
+    .unwrap();
+    assert_eq!(pings, vec![(c.fx.id, 0.0, 0.0, 8.5, ts)]);
 
     let near = new_geofence(&c, gf_body("Dekat", 0.0, 0.0, 100)).await;
     let far = new_geofence(&c, gf_body("Jauh", 0.0, 0.5, 100)).await;

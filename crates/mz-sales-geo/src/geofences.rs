@@ -1142,6 +1142,17 @@ fn parse_event(m: &Map<String, Value>) -> Result<EventDto, Vec<String>> {
     }
 }
 
+/// `new Date(dto.timestamp)`: di luar ±8.64e15 = Invalid Date → Prisma menolak → 500.
+fn event_timestamp(dto: &EventDto) -> ApiResult<JsDate> {
+    #[allow(clippy::cast_possible_truncation)]
+    if dto.timestamp.abs() <= 8.64e15 {
+        JsDate::from_millis(dto.timestamp.trunc() as i64)
+    } else {
+        None
+    }
+    .ok_or_else(|| internal("Invalid Date (timestamp)"))
+}
+
 /// `logEvent`.
 async fn log_event(state: &AppState, user_id: i32, dto: &EventDto) -> ApiResult<Value> {
     let company_id = require_company_id(&state.db, user_id).await?;
@@ -1168,9 +1179,24 @@ async fn log_event(state: &AppState, user_id: i32, dto: &EventDto) -> ApiResult<
     } else {
         let candidates = geo::active_geofences_for(&state.db, company_id, user_id).await?;
         let Some((chosen, d)) = geo::pick_geofence(&candidates, dto.lat, dto.lng) else {
+            // User tanpa geofence sama sekali (mis. sales lapangan): tak ada enter/exit yang
+            // bisa diputuskan, tapi posisinya tetap disimpan di `userLocationPing` supaya
+            // perjalanannya tercatat (tampil di detail attendance sebagai `source: 'location'`).
+            let ts = event_timestamp(dto)?;
+            sqlx::query(
+                r#"INSERT INTO "userLocationPing" ("companyId", "userId", lat, lng, accuracy, "timestamp")
+                   VALUES ($1, $2, $3, $4, $5, $6)"#,
+            )
+            .bind(company_id)
+            .bind(user_id)
+            .bind(dto.lat)
+            .bind(dto.lng)
+            .bind(dto.accuracy)
+            .bind(ts.0)
+            .execute(&state.db)
+            .await?;
             return Ok(json!({
-                "logged": false,
-                "reason": "NO_APPLICABLE_GEOFENCE",
+                "logged": true,
                 "geofenceId": null,
                 "event": null,
                 "distanceMeters": null,
@@ -1184,14 +1210,7 @@ async fn log_event(state: &AppState, user_id: i32, dto: &EventDto) -> ApiResult<
     } else {
         "exit"
     };
-    // `new Date(ms)` di luar ±8.64e15 = Invalid Date → Prisma menolak → 500.
-    #[allow(clippy::cast_possible_truncation)]
-    let ts = if dto.timestamp.abs() <= 8.64e15 {
-        JsDate::from_millis(dto.timestamp.trunc() as i64)
-    } else {
-        None
-    }
-    .ok_or_else(|| internal("Invalid Date (timestamp)"))?;
+    let ts = event_timestamp(dto)?;
 
     sqlx::query(
         r#"INSERT INTO "geofenceAuditLog" ("geofenceId", "userId", event, lat, lng, accuracy, "timestamp")

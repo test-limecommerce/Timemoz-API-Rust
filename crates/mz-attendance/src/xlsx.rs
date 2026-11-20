@@ -41,7 +41,7 @@ fn num_or_dash(ws: &mut Worksheet, row: u32, col: u16, v: Option<f64>) -> Result
     }
 }
 
-const HEADERS: [&str; 20] = [
+const HEADERS: [&str; 25] = [
     "No",
     "Employee Name",
     "Username",
@@ -62,6 +62,11 @@ const HEADERS: [&str; 20] = [
     "Duration",
     "Status",
     "Note",
+    "GPS Status (Last)",
+    "GPS Off Count",
+    "GPS Last Turned Off",
+    "GPS Off Lat",
+    "GPS Off Lng",
 ];
 
 /// `generateAttendanceExcel(data)`.
@@ -150,6 +155,19 @@ pub fn build(data: &ExportData) -> Result<Vec<u8>, XlsxError> {
         ws.write_string(row, 17, format_duration(r.duration_seconds))?;
         ws.write_string(row, 18, &r.status)?;
         ws.write_string(row, 19, cell(r.note.as_deref().unwrap_or("-")))?;
+        ws.write_string(row, 20, cell(r.gps.status_label()))?;
+        #[allow(clippy::cast_precision_loss)]
+        ws.write_number(row, 21, r.gps.disabled_count as f64)?;
+        ws.write_string(
+            row,
+            22,
+            r.gps
+                .last_disabled_at_ms
+                .map_or_else(|| "-".to_owned(), format_timestamp),
+        )?;
+        let loc = r.gps.last_disabled_location;
+        num_or_dash(ws, row, 23, loc.map(|l| l.lat))?;
+        num_or_dash(ws, row, 24, loc.map(|l| l.lng))?;
     }
 
     wb.save_to_buffer()
@@ -200,6 +218,7 @@ mod tests {
                 late_seconds: Some(60),
                 status: "active".into(),
                 note: None,
+                gps: crate::attendance::AdminGps::default(),
             }],
         };
         let bytes = build(&data).unwrap_or_default();

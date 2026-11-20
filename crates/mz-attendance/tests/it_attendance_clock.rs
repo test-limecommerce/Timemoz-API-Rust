@@ -832,3 +832,124 @@ async fn company_config_and_signed_logo() {
         .await
         .unwrap();
 }
+
+/// Node 7dc78f7: `POST /mobile/clock/gps-status` — status terakhir, transisi ok → buruk dihitung,
+/// laporan lama/ulang `STALE`, tanpa shift aktif `NO_ACTIVE_SHIFT`, jam device di depan → 400.
+#[tokio::test]
+async fn gps_status_report() {
+    let _g = SERIAL.lock().await;
+    let Some((app, _em)) = app("gps_status").await else {
+        return;
+    };
+    let c = app.company().await;
+    reset(&app, c.id).await;
+    let staff = &c.staff.token;
+    let now: i64 = app
+        .scalar("SELECT (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint")
+        .await;
+    let send = |body: Value| {
+        let app = &app;
+        async move {
+            app.post("/mobile/clock/gps-status")
+                .token(staff)
+                .json(&body)
+                .send()
+                .await
+        }
+    };
+
+    // Validasi DTO.
+    let r = send(json!({ "status": "off", "timestamp": now, "lat": 1.0 })).await;
+    r.assert_status(400);
+    assert_eq!(
+        r.json["message"],
+        json!([
+            "status must be one of the following values: ok, gps_disabled, permission_denied, permission_denied_forever",
+            "lng must not be greater than 180",
+            "lng must not be less than -180",
+            "lng must be a number conforming to the specified constraints",
+            "locationAt must not be greater than 4102444800000",
+            "locationAt must not be less than 1577836800000",
+            "locationAt must be an integer number"
+        ])
+    );
+    let r = send(json!({ "status": "ok", "timestamp": now + 10 * 60 * 1000 })).await;
+    r.assert_status(400);
+    assert_eq!(
+        r.json,
+        json!({ "code": "TIMESTAMP_IN_FUTURE", "message": "timestamp is ahead of server time" })
+    );
+
+    // Belum clock-in.
+    let r = send(json!({ "status": "ok", "timestamp": now })).await;
+    r.assert_status(201);
+    assert_eq!(
+        r.json,
+        json!({ "data": { "logged": false, "reason": "NO_ACTIVE_SHIFT" } })
+    );
+
+    let (shift_id, shift_uuid): (i32, String) = sqlx::query_as(
+        r#"INSERT INTO "mobileShift" ("userId", "companyId", "clockInAt", status, source)
+           VALUES ($1, $2, NOW() - INTERVAL '1 minute', 'active', 'mobile') RETURNING id, uuid::text"#,
+    )
+    .bind(c.staff.id)
+    .bind(c.id)
+    .fetch_one(app.db())
+    .await
+    .unwrap();
+
+    // Laporan dari sebelum clock-in (> 5 mnt) = milik shift lain.
+    let r = send(json!({ "status": "gps_disabled", "timestamp": now - 10 * 60 * 1000 })).await;
+    assert_eq!(r.json["data"]["reason"], "NO_ACTIVE_SHIFT");
+
+    let t1 = now - 30_000;
+    let r = send(json!({ "status": "ok", "timestamp": t1 })).await;
+    r.assert_status(201).assert_no_sql_error();
+    assert_eq!(
+        r.json,
+        json!({ "data": { "logged": true, "shiftId": shift_uuid, "gpsStatus": "ok",
+                          "gpsStatusUpdatedAt": t1, "gpsLastDisabledAt": null, "gpsDisabledCount": 0 } })
+    );
+    let t2 = t1 + 1000;
+    let r = send(json!({ "status": "gps_disabled", "timestamp": t2,
+                         "lat": -6.2, "lng": 106.8, "locationAt": t2 - 500 }))
+    .await;
+    assert_eq!(r.json["data"]["gpsDisabledCount"], 1);
+    assert_eq!(r.json["data"]["gpsLastDisabledAt"], t2);
+    // Antar status buruk = kejadian yang sama; posisi tidak ditimpa.
+    let t3 = t2 + 1000;
+    let r = send(json!({ "status": "permission_denied", "timestamp": t3 })).await;
+    assert_eq!(r.json["data"]["gpsStatus"], "permission_denied");
+    assert_eq!(r.json["data"]["gpsDisabledCount"], 1);
+    assert_eq!(r.json["data"]["gpsLastDisabledAt"], t2);
+    // Retry / laporan lebih lama.
+    let r = send(json!({ "status": "ok", "timestamp": t3 })).await;
+    assert_eq!(
+        r.json,
+        json!({ "data": { "logged": false, "reason": "STALE" } })
+    );
+    // Pulih lalu mati lagi → hitungan naik.
+    send(json!({ "status": "ok", "timestamp": t3 + 1000 }))
+        .await
+        .assert_status(201);
+    let r = send(json!({ "status": "gps_disabled", "timestamp": t3 + 2000 })).await;
+    assert_eq!(r.json["data"]["gpsDisabledCount"], 2);
+    let row: (Option<f64>, Option<f64>, i32) = sqlx::query_as(
+        r#"SELECT "gpsLastDisabledLat", "gpsLastDisabledLng", "gpsDisabledCount" FROM "mobileShift" WHERE id = $1"#,
+    )
+    .bind(shift_id)
+    .fetch_one(app.db())
+    .await
+    .unwrap();
+    // Kejadian kedua tanpa lokasi: lat/lng ditimpa null.
+    assert_eq!(row, (None, None, 2));
+
+    // Shift ditutup → tidak ada shift aktif.
+    app.exec(&format!(
+        r#"UPDATE "mobileShift" SET status = 'closed', "clockOutAt" = NOW() WHERE id = {shift_id}"#
+    ))
+    .await;
+    let r = send(json!({ "status": "ok", "timestamp": now + 1000 })).await;
+    assert_eq!(r.json["data"]["reason"], "NO_ACTIVE_SHIFT");
+    reset(&app, c.id).await;
+}

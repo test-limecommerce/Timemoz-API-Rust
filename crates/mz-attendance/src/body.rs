@@ -271,6 +271,100 @@ pub fn parse_auto_close(map: &Map<String, Value>) -> Result<Option<f64>, ApiErro
     }
 }
 
+/// Nilai enum Postgres `MobileShiftGpsStatus` (urutan = skema).
+pub const GPS_STATUS_VALUES: [&str; 4] = [
+    "ok",
+    "gps_disabled",
+    "permission_denied",
+    "permission_denied_forever",
+];
+
+/// Rentang epoch ms yang masuk akal: 2020-01-01 s.d. 2100-01-01.
+const MIN_EPOCH_MS: f64 = 1_577_836_800_000.0;
+const MAX_EPOCH_MS: f64 = 4_102_444_800_000.0;
+
+/// `GpsStatusDto` (`POST /mobile/clock/gps-status`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GpsStatusDto {
+    pub status: String,
+    pub timestamp: i64,
+    /// `(lat, lng, locationAt)` — DTO memaksa ketiganya diisi bersama.
+    pub location: Option<(f64, f64, i64)>,
+}
+
+/// `typeof v === 'number'` (body JSON; tanpa `@Type`, string tidak dikonversi).
+fn js_number(v: Option<&Value>) -> Option<f64> {
+    v.and_then(Value::as_f64)
+}
+
+/// `@IsInt() @Min(min) @Max(max)` — pesan urut dekorator dari bawah.
+fn epoch_ms(map: &Map<String, Value>, key: &str, e: &mut Vec<String>) -> Option<i64> {
+    let n = js_number(map.get(key));
+    let before = e.len();
+    if n.is_none_or(|n| n > MAX_EPOCH_MS) {
+        e.push(format!("{key} must not be greater than {MAX_EPOCH_MS}"));
+    }
+    if n.is_none_or(|n| n < MIN_EPOCH_MS) {
+        e.push(format!("{key} must not be less than {MIN_EPOCH_MS}"));
+    }
+    if n.is_none_or(|n| n.fract() != 0.0) {
+        e.push(format!("{key} must be an integer number"));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    n.filter(|_| e.len() == before).map(|n| n as i64)
+}
+
+/// `@IsNumber({ allowNaN: false, allowInfinity: false }) @Min(-lim) @Max(lim)`.
+fn coord(map: &Map<String, Value>, key: &str, lim: f64, e: &mut Vec<String>) -> Option<f64> {
+    let n = js_number(map.get(key));
+    let before = e.len();
+    if n.is_none_or(|n| n > lim) {
+        e.push(format!("{key} must not be greater than {lim}"));
+    }
+    if n.is_none_or(|n| n < -lim) {
+        e.push(format!("{key} must not be less than -{lim}"));
+    }
+    if n.is_none() {
+        e.push(is_number_msg(key));
+    }
+    n.filter(|_| e.len() == before)
+}
+
+impl GpsStatusDto {
+    pub fn parse(map: &Map<String, Value>) -> Result<Self, ApiError> {
+        let mut e = Vec::new();
+        let status = match map.get("status") {
+            Some(Value::String(s)) if GPS_STATUS_VALUES.contains(&s.as_str()) => Some(s.clone()),
+            _ => {
+                e.push(format!(
+                    "status must be one of the following values: {}",
+                    GPS_STATUS_VALUES.join(", ")
+                ));
+                None
+            }
+        };
+        let timestamp = epoch_ms(map, "timestamp", &mut e);
+        // `@ValidateIf(hasLocation)`: lat/lng/locationAt divalidasi bila lat ATAU lng tidak null.
+        let present = |k: &str| !matches!(map.get(k), None | Some(Value::Null));
+        let location = if present("lat") || present("lng") {
+            let lat = coord(map, "lat", 90.0, &mut e);
+            let lng = coord(map, "lng", 180.0, &mut e);
+            let at = epoch_ms(map, "locationAt", &mut e);
+            lat.zip(lng).zip(at).map(|((a, b), c)| (a, b, c))
+        } else {
+            None
+        };
+        match (status, timestamp) {
+            (Some(status), Some(timestamp)) if e.is_empty() => Ok(Self {
+                status,
+                timestamp,
+                location,
+            }),
+            _ => Err(ApiError::Validation(e)),
+        }
+    }
+}
+
 /// `SaveFaceDto` (`@IsString() @IsNotEmpty()`).
 pub fn parse_save_face(map: &Map<String, Value>) -> Result<String, ApiError> {
     let v = map.get("faces");
@@ -296,6 +390,8 @@ pub struct AttendanceQuery {
     pub end_date: String,
     pub user_uuid: Option<String>,
     pub geofence_uuid: Option<String>,
+    /// `gpsOff=true`: hanya shift dengan `gpsDisabledCount > 0` (admin & export).
+    pub gps_off: bool,
     pub page: i64,
     pub limit: i64,
 }
@@ -321,6 +417,20 @@ fn date_field(map: &Map<String, Value>, key: &str, e: &mut Vec<String>) -> Strin
         _ => {
             e.push(format!("{key} must be a valid ISO 8601 date string"));
             String::new()
+        }
+    }
+}
+
+/// `@Transform('true'→true, 'false'→false) @IsBoolean() @IsOptional()`.
+fn bool_field(map: &Map<String, Value>, key: &str, e: &mut Vec<String>) -> bool {
+    match map.get(key) {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) if s == "true" => true,
+        Some(Value::String(s)) if s == "false" => false,
+        Some(_) => {
+            e.push(format!("{key} must be a boolean value"));
+            false
         }
     }
 }
@@ -402,6 +512,13 @@ impl AttendanceQuery {
             None
         };
         let geofence_uuid = uuid_field(&map, "geofenceUuid", &mut e);
+        // `gpsOff` dideklarasikan sesudah `geofenceUuid` (sebelum page/limit) di DTO admin &
+        // export; DTO mobile tidak punya.
+        let gps_off = if kind == QueryKind::Mobile {
+            false
+        } else {
+            bool_field(&map, "gpsOff", &mut e)
+        };
         let (page, limit) = if kind == QueryKind::Export {
             (1, 20)
         } else {
@@ -417,6 +534,7 @@ impl AttendanceQuery {
             end_date,
             user_uuid,
             geofence_uuid,
+            gps_off,
             page,
             limit,
         })
@@ -499,6 +617,89 @@ mod tests {
             parse_auto_close(&obj(json!({"thresholdHours": "-2.5"}))).ok(),
             Some(Some(-2.5))
         );
+    }
+
+    #[test]
+    fn gps_status_messages() {
+        assert_eq!(
+            msgs(GpsStatusDto::parse(&obj(json!({})))),
+            vec![
+                "status must be one of the following values: ok, gps_disabled, permission_denied, permission_denied_forever",
+                "timestamp must not be greater than 4102444800000",
+                "timestamp must not be less than 1577836800000",
+                "timestamp must be an integer number",
+            ]
+        );
+        assert_eq!(
+            msgs(GpsStatusDto::parse(&obj(
+                json!({"status":"ok","timestamp":1732000000000.5_f64,"lat":95})
+            ))),
+            vec![
+                "timestamp must be an integer number",
+                "lat must not be greater than 90",
+                "lng must not be greater than 180",
+                "lng must not be less than -180",
+                "lng must be a number conforming to the specified constraints",
+                "locationAt must not be greater than 4102444800000",
+                "locationAt must not be less than 1577836800000",
+                "locationAt must be an integer number",
+            ]
+        );
+        assert_eq!(
+            GpsStatusDto::parse(&obj(
+                json!({"status":"gps_disabled","timestamp":1732000000000_i64,"lat":null,"lng":null})
+            ))
+            .ok(),
+            Some(GpsStatusDto {
+                status: "gps_disabled".into(),
+                timestamp: 1_732_000_000_000,
+                location: None,
+            })
+        );
+        assert_eq!(
+            GpsStatusDto::parse(&obj(json!({
+                "status":"permission_denied","timestamp":1732000000000_i64,
+                "lat":-6.2,"lng":106.8,"locationAt":1731999400000_i64
+            })))
+            .ok()
+            .and_then(|d| d.location),
+            Some((-6.2, 106.8, 1_731_999_400_000))
+        );
+        // String tidak dikonversi (tanpa `@Type`).
+        assert!(
+            GpsStatusDto::parse(&obj(json!({"status":"ok","timestamp":"1732000000000"}))).is_err()
+        );
+    }
+
+    #[test]
+    fn gps_off_query() {
+        let parse = |raw: &str, k| AttendanceQuery::parse(Some(raw), k);
+        let base = "startDate=2026-01-01&endDate=2026-01-01";
+        assert_eq!(
+            parse(&format!("{base}&gpsOff=true"), QueryKind::Admin)
+                .ok()
+                .map(|q| q.gps_off),
+            Some(true)
+        );
+        assert_eq!(
+            parse(&format!("{base}&gpsOff=false"), QueryKind::Export)
+                .ok()
+                .map(|q| q.gps_off),
+            Some(false)
+        );
+        assert_eq!(
+            msgs(parse(
+                &format!("{base}&geofenceUuid=x&gpsOff=1&page=0"),
+                QueryKind::Admin
+            )),
+            vec![
+                "geofenceUuid must be a UUID",
+                "gpsOff must be a boolean value",
+                "page must not be less than 1"
+            ]
+        );
+        // DTO mobile tidak punya `gpsOff`.
+        assert!(parse(&format!("{base}&gpsOff=1"), QueryKind::Mobile).is_ok());
     }
 
     #[test]

@@ -79,6 +79,107 @@ pub struct ShiftRow {
     pub user_uuid: String,
     pub user_name: String,
     pub user_username: String,
+    #[sqlx(flatten)]
+    pub gps: ShiftGps,
+}
+
+/// Kolom pemantauan GPS/izin lokasi shift (`POST /mobile/clock/gps-status`).
+#[derive(Debug, Clone, Default, sqlx::FromRow)]
+pub struct ShiftGps {
+    #[sqlx(rename = "gpsStatus")]
+    pub status: Option<String>,
+    #[sqlx(rename = "gpsStatusUpdatedAt")]
+    pub updated_at: Option<NaiveDateTime>,
+    #[sqlx(rename = "gpsLastDisabledAt")]
+    pub last_disabled_at: Option<NaiveDateTime>,
+    #[sqlx(rename = "gpsLastDisabledLat")]
+    pub last_disabled_lat: Option<f64>,
+    #[sqlx(rename = "gpsLastDisabledLng")]
+    pub last_disabled_lng: Option<f64>,
+    #[sqlx(rename = "gpsLastDisabledLocationAt")]
+    pub last_disabled_location_at: Option<NaiveDateTime>,
+    #[sqlx(rename = "gpsDisabledCount")]
+    pub disabled_count: i32,
+}
+
+/// `{ lat, lng, at }` posisi last-known saat GPS terakhir dimatikan.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpsLocation {
+    pub lat: f64,
+    pub lng: f64,
+    pub at_ms: Option<i64>,
+}
+
+/// Objek `gps` di daftar, detail & ekspor attendance admin (`toAdminGps`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AdminGps {
+    pub status: Option<String>,
+    pub updated_at_ms: Option<i64>,
+    pub last_disabled_at_ms: Option<i64>,
+    pub last_disabled_location: Option<GpsLocation>,
+    pub disabled_count: i64,
+}
+
+impl ShiftGps {
+    pub fn admin(&self) -> AdminGps {
+        AdminGps {
+            status: self.status.clone(),
+            updated_at_ms: self.updated_at.map(ms),
+            last_disabled_at_ms: self.last_disabled_at.map(ms),
+            last_disabled_location: self.last_disabled_lat.zip(self.last_disabled_lng).map(
+                |(lat, lng)| GpsLocation {
+                    lat,
+                    lng,
+                    at_ms: self.last_disabled_location_at.map(ms),
+                },
+            ),
+            disabled_count: i64::from(self.disabled_count),
+        }
+    }
+}
+
+/// `attendance-gps-format.ts`: format kolom GPS ekspor attendance (Excel & PDF).
+impl AdminGps {
+    /// `gpsStatusLabel`: label status GPS terakhir; `-` bila device belum pernah melapor.
+    pub fn status_label(&self) -> &str {
+        match self.status.as_deref() {
+            None => "-",
+            Some("ok") => "OK",
+            Some("gps_disabled") => "GPS Off",
+            Some("permission_denied") => "Permission Denied",
+            Some("permission_denied_forever") => "Permission Denied (Permanent)",
+            Some(other) => other,
+        }
+    }
+
+    /// `gpsOffSummary`: `-` (belum pernah melapor), `No` (melapor, tak pernah mati), atau
+    /// `2x, 06-09 03:05` (jumlah kejadian + terakhir dimatikan, `MM-DD HH:mm` UTC).
+    pub fn off_summary(&self) -> String {
+        if self.disabled_count > 0 {
+            let at = self
+                .last_disabled_at_ms
+                .and_then(chrono::DateTime::<chrono::Utc>::from_timestamp_millis);
+            return match at {
+                Some(d) => format!("{}x, {}", self.disabled_count, d.format("%m-%d %H:%M")),
+                None => format!("{}x", self.disabled_count),
+            };
+        }
+        if self.status.is_none() { "-" } else { "No" }.to_owned()
+    }
+
+    pub fn to_json(&self) -> Value {
+        json!({
+            "status": self.status,
+            "updatedAt": self.updated_at_ms,
+            "lastDisabledAt": self.last_disabled_at_ms,
+            "lastDisabledLocation": self.last_disabled_location.map_or(Value::Null, |l| json!({
+                "lat": num(l.lat),
+                "lng": num(l.lng),
+                "at": l.at_ms,
+            })),
+            "disabledCount": self.disabled_count,
+        })
+    }
 }
 
 const SHIFT_COLUMNS: &str = r#"s.id, s.uuid::text AS uuid, s."userId", s."companyId", s."clockInAt", s."clockOutAt",
@@ -87,7 +188,10 @@ const SHIFT_COLUMNS: &str = r#"s.id, s.uuid::text AS uuid, s."userId", s."compan
     s."clockInSelfieKey", s."clockInVerified"::text AS "clockInVerified",
     s."clockOutLat", s."clockOutLng", s."clockOutAccuracy", s."clockOutIsMock", s."clockOutGeofenceId",
     s."clockOutSelfieKey", s."clockOutVerified"::text AS "clockOutVerified",
-    u.uuid::text AS user_uuid, u.name AS user_name, u.username AS user_username"#;
+    u.uuid::text AS user_uuid, u.name AS user_name, u.username AS user_username,
+    s."gpsStatus"::text AS "gpsStatus", s."gpsStatusUpdatedAt", s."gpsLastDisabledAt",
+    s."gpsLastDisabledLat", s."gpsLastDisabledLng", s."gpsLastDisabledLocationAt",
+    s."gpsDisabledCount""#;
 
 /// Geofence untuk tampilan (`{ id, name, radiusMeters }`, + alamat & jadwal untuk daftar selfie).
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -187,6 +291,7 @@ struct Filter<'a> {
     end: NaiveDateTime,
     user_uuid: Option<&'a str>,
     geofence_id: Option<i32>,
+    gps_off: bool,
 }
 
 impl Filter<'_> {
@@ -211,6 +316,9 @@ impl Filter<'_> {
                 .push(r#" OR s."clockOutGeofenceId" = "#)
                 .push_bind(g)
                 .push(")");
+        }
+        if self.gps_off {
+            qb.push(r#" AND s."gpsDisabledCount" > 0"#);
         }
     }
 }
@@ -462,6 +570,7 @@ pub async fn admin_attendance(
         end,
         user_uuid: q.user_uuid.as_deref(),
         geofence_id,
+        gps_off: q.gps_off,
     };
     let (shifts, total, all, gfs) = tokio::try_join!(
         list_shifts(db, &f, Some((q.page, q.limit)), None),
@@ -482,6 +591,7 @@ pub async fn admin_attendance(
                 "durationSeconds": s.duration_seconds,
                 "status": admin_status(&s.status),
                 "note": s.note,
+                "gps": s.gps.admin().to_json(),
             })
         })
         .collect();
@@ -517,6 +627,7 @@ pub async fn my_attendance(
         end,
         user_uuid: None,
         geofence_id,
+        gps_off: false,
     };
     let applicable = async {
         let rows: Vec<(i32, Option<Value>, Option<String>)> = sqlx::query_as(
@@ -714,8 +825,22 @@ pub async fn admin_attendance_detail(
         .fetch_all(db)
         .await
     };
-    let (audit, visits) = tokio::try_join!(audit, visits)?;
-    let mut events: Vec<(i64, Value)> = Vec::with_capacity(audit.len() + visits.len());
+    // Sumber ketiga, `source: 'location'`: ping dari user TANPA geofence (`userLocationPing`).
+    // Tidak ada zona, jadi `geofence: null` dan `event: 'exit'` (dashboard memetakan ikon dari
+    // enter/exit). Tidak digerbang paket, sama dengan sisi `geofence`.
+    let pings = sqlx::query_as::<_, (f64, f64, f64, NaiveDateTime)>(
+        r#"SELECT lat, lng, accuracy, timestamp FROM "userLocationPing"
+            WHERE "userId" = $1 AND "companyId" = $2 AND timestamp >= $3 AND timestamp <= $4
+            ORDER BY id"#,
+    )
+    .bind(s.user_id)
+    .bind(company_id)
+    .bind(start)
+    .bind(end)
+    .fetch_all(db);
+    let (audit, visits, pings) = tokio::try_join!(audit, visits, pings)?;
+    let mut events: Vec<(i64, Value)> =
+        Vec::with_capacity(audit.len() + visits.len() + pings.len());
     for (source, rows) in [("geofence", audit), ("store_visit", visits)] {
         for l in rows {
             events.push((
@@ -732,6 +857,21 @@ pub async fn admin_attendance_detail(
             ));
         }
     }
+    for (lat, lng, accuracy, timestamp) in pings {
+        events.push((
+            ms(timestamp),
+            json!({
+                "source": "location",
+                "event": "exit",
+                "geofence": null,
+                "lat": num(lat),
+                "lng": num(lng),
+                "accuracy": num(accuracy),
+                "timestamp": ms(timestamp),
+            }),
+        ));
+    }
+    // Sort stabil, sama dengan `Array.prototype.sort` Node.
     events.sort_by_key(|(t, _)| *t);
     Ok(json!({
         "shiftId": s.uuid,
@@ -741,6 +881,7 @@ pub async fn admin_attendance_detail(
         "durationSeconds": s.duration_seconds,
         "status": admin_status(&s.status),
         "note": s.note,
+        "gps": s.gps.admin().to_json(),
         "geofenceEvents": events.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
     }))
 }
@@ -778,6 +919,8 @@ pub async fn admin_attendance_selfie(
         end,
         user_uuid: q.user_uuid.as_deref(),
         geofence_id,
+        // `gpsOff` hanya berlaku di daftar attendance & ekspor.
+        gps_off: false,
     };
     let (shifts, total) = tokio::try_join!(
         list_shifts(db, &f, Some((q.page, q.limit)), None),
@@ -883,6 +1026,7 @@ pub struct ExportRow {
     pub late_seconds: Option<i64>,
     pub status: String,
     pub note: Option<String>,
+    pub gps: AdminGps,
 }
 
 #[derive(Debug, Clone)]
@@ -911,6 +1055,7 @@ pub async fn export_data(
         end,
         user_uuid: q.user_uuid.as_deref(),
         geofence_id,
+        gps_off: q.gps_off,
     };
     let (shifts, all, gfs) = tokio::try_join!(
         list_shifts(db, &f, None, Some(10_000)),
@@ -947,6 +1092,7 @@ pub async fn export_data(
             late_seconds: late,
             status: admin_status(&s.status).to_owned(),
             note: s.note.clone(),
+            gps: s.gps.admin(),
             user_name: s.user_name,
             username: s.user_username,
         });
@@ -975,6 +1121,45 @@ mod tests {
         assert_eq!(meta(0, 1, 20)["totalPages"], 0);
         assert_eq!(meta(21, 1, 20)["totalPages"], 2);
         assert_eq!(meta(20, 1, 20)["totalPages"], 1);
+    }
+
+    #[test]
+    fn gps_format() {
+        let never = AdminGps::default();
+        assert_eq!(never.status_label(), "-");
+        assert_eq!(never.off_summary(), "-");
+        let ok = AdminGps {
+            status: Some("ok".into()),
+            ..AdminGps::default()
+        };
+        assert_eq!(ok.status_label(), "OK");
+        assert_eq!(ok.off_summary(), "No");
+        let off = AdminGps {
+            status: Some("permission_denied_forever".into()),
+            last_disabled_at_ms: Some(1_749_438_300_000), // 2025-06-09T03:05:00Z
+            disabled_count: 2,
+            ..AdminGps::default()
+        };
+        assert_eq!(off.status_label(), "Permission Denied (Permanent)");
+        assert_eq!(off.off_summary(), "2x, 06-09 03:05");
+        let no_time = AdminGps {
+            status: Some("weird".into()),
+            disabled_count: 1,
+            ..AdminGps::default()
+        };
+        assert_eq!(no_time.status_label(), "weird");
+        assert_eq!(no_time.off_summary(), "1x");
+        let row = ShiftGps {
+            last_disabled_lat: Some(-6.2),
+            last_disabled_lng: None,
+            ..ShiftGps::default()
+        };
+        assert_eq!(row.admin().last_disabled_location, None);
+        assert_eq!(
+            row.admin().to_json(),
+            json!({"status": null, "updatedAt": null, "lastDisabledAt": null,
+                   "lastDisabledLocation": null, "disabledCount": 0})
+        );
     }
 
     #[test]

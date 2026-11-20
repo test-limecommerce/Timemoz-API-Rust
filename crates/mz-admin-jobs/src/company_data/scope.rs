@@ -390,6 +390,7 @@ pub const HEAVY_MODELS: &[&str] = &[
     "dailyCompanySummary",
     "userLog",
     "geofenceAuditLog",
+    "userLocationPing",
     "storeVisitAuditLog",
     "auditLog",
     "fieldRevealLog",

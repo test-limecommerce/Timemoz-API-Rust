@@ -71,6 +71,7 @@ model users {
   mobileShifts                 mobileShift[]
   mobileBreaks                 mobileBreak[]
   geofenceAuditLogs            geofenceAuditLog[]
+  userLocationPings            userLocationPing[]
   createdGeofences             geofence[]
   createdNegativeZones         negativeZone[]
   leaveRequests                leaveRequest[]
@@ -477,6 +478,7 @@ model company {
   tasks                              task[]
   googleCalendarEvents               googleCalendarEvent[]
   mobileShifts                       mobileShift[]
+  userLocationPings                  userLocationPing[]
   mobileBreakPolicy                  mobileBreakPolicy?
   geofences                          geofence[]
   negativeZones                      negativeZone[]
@@ -2382,6 +2384,15 @@ enum MobileShiftStatus {
   auto_closed
 }
 
+// Status GPS/izin lokasi terakhir yang dilaporkan device selama shift
+// (POST /mobile/clock/gps-status). Nilai mengikuti kontrak mobile apa adanya.
+enum MobileShiftGpsStatus {
+  ok
+  gps_disabled
+  permission_denied
+  permission_denied_forever
+}
+
 enum MobileSource {
   mobile
   web
@@ -2443,6 +2454,19 @@ model mobileShift {
   clockOutGeofenceId Int?
   clockOutSelfieKey  String?           @db.Text
   clockOutVerified   PunchVerifStatus?
+
+  // Pemantauan GPS/izin lokasi selama shift (POST /mobile/clock/gps-status).
+  // Semua waktu = waktu kejadian di device, bukan waktu laporan sampai. NULL = device
+  // belum pernah melapor (app versi lama, atau shift sebelum fitur ini ada).
+  gpsStatus                 MobileShiftGpsStatus?
+  gpsStatusUpdatedAt        DateTime?
+  // Transisi terakhir dari ok/belum-ada-laporan ke status buruk, beserta posisi
+  // last-known device saat itu (opsional dari client).
+  gpsLastDisabledAt         DateTime?
+  gpsLastDisabledLat        Float?
+  gpsLastDisabledLng        Float?
+  gpsLastDisabledLocationAt DateTime?
+  gpsDisabledCount          Int                   @default(0)
 
   createdAt          DateTime          @default(dbgenerated("NOW()"))
   updatedAt          DateTime?         @default(dbgenerated("NOW()"))
@@ -2535,6 +2559,30 @@ model geofenceAuditLog {
 
   @@index([geofenceId])
   @@index([userId])
+}
+
+// Ping lokasi background (POST /mobile/geofences/event) dari user yang TIDAK punya
+// geofence sama sekali — mis. sales lapangan. `geofenceAuditLog.geofenceId` wajib, jadi
+// ping ini dulu dibuang (NO_APPLICABLE_GEOFENCE) dan perjalanan mereka tidak tercatat.
+// Tabel terpisah, bukan geofenceId nullable: tanpa geofence, pagar tenant harus datang
+// dari `companyId` sendiri, dan menambah kolom itu ke geofenceAuditLog berarti backfill
+// tabel bervolume tinggi. Ditampilkan di detail attendance sebagai `source: 'location'`.
+model userLocationPing {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  userId    Int
+  lat       Float
+  lng       Float
+  accuracy  Float
+  // Waktu ping di device (epoch ms dari client), bukan waktu diterima server.
+  timestamp DateTime
+  createdAt DateTime @default(dbgenerated("NOW()"))
+
+  company company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    users   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+  @@index([companyId])
 }
 
 model negativeZone {

@@ -479,3 +479,129 @@ async fn admin_selfies_and_exports() {
     assert_eq!(r.json["message"], "endDate must be on or after startDate");
     reset(&app, c.id).await;
 }
+
+/// Node 7dc78f7/9a700a2/d20ad0a: objek `gps` + filter `gpsOff` di daftar, detail & ekspor; ping
+/// lokasi user tanpa geofence (`userLocationPing`) tampil sebagai `source: 'location'`.
+#[tokio::test]
+async fn admin_attendance_gps_and_location_pings() {
+    let _g = SERIAL.lock().await;
+    let Some((app, _em)) = app("adm_gps").await else {
+        return;
+    };
+    let c = app.company().await;
+    let fx = seed(&app, &c).await;
+    let admin = &c.admin.token;
+    app.exec(&format!(
+        r#"UPDATE "mobileShift" SET "gpsStatus" = 'ok', "gpsStatusUpdatedAt" = '2026-06-01 11:00:00',
+                  "gpsLastDisabledAt" = '2026-06-01 10:00:00', "gpsLastDisabledLat" = -6.25,
+                  "gpsLastDisabledLng" = 106.85, "gpsLastDisabledLocationAt" = '2026-06-01 09:59:00',
+                  "gpsDisabledCount" = 2
+            WHERE uuid = '{}'::uuid;
+           INSERT INTO "userLocationPing" ("companyId", "userId", lat, lng, accuracy, timestamp)
+           VALUES ({cid}, {u}, -6.3, 106.9, 12.5, '2026-06-01 11:00:00'),
+                  ({cid}, {u}, -6.3, 106.9, 12.5, '2026-06-02 11:00:00');"#,
+        fx.late,
+        cid = c.id,
+        u = c.staff.id
+    ))
+    .await;
+    let late_gps = json!({
+        "status": "ok",
+        "updatedAt": 1_780_311_600_000_i64,
+        "lastDisabledAt": 1_780_308_000_000_i64,
+        "lastDisabledLocation": { "lat": -6.25, "lng": 106.85, "at": 1_780_307_940_000_i64 },
+        "disabledCount": 2
+    });
+
+    let r = app
+        .get(&format!("/v1/admin/clock/attendance?{RANGE}&gpsOff=yes"))
+        .token(admin)
+        .send()
+        .await;
+    r.assert_status(400);
+    assert_eq!(r.json["message"], json!(["gpsOff must be a boolean value"]));
+
+    let r = app
+        .get(&format!("/v1/admin/clock/attendance?{RANGE}"))
+        .token(admin)
+        .send()
+        .await;
+    r.assert_ok().assert_no_sql_error();
+    assert_eq!(
+        r.json["data"][0]["gps"],
+        json!({ "status": null, "updatedAt": null, "lastDisabledAt": null,
+                "lastDisabledLocation": null, "disabledCount": 0 })
+    );
+    assert_eq!(r.json["data"][1]["gps"], late_gps);
+
+    // `gpsOff=true` menyaring daftar; ringkasan tetap company-wide.
+    let r = app
+        .get(&format!("/v1/admin/clock/attendance?{RANGE}&gpsOff=true"))
+        .token(admin)
+        .send()
+        .await;
+    r.assert_ok();
+    assert_eq!(r.json["meta"]["total"], 1);
+    assert_eq!(r.json["data"][0]["shiftId"], fx.late.as_str());
+    assert_eq!(r.json["summary"]["totalPresent"], 2);
+    let r = app
+        .get(&format!("/v1/admin/clock/attendance?{RANGE}&gpsOff=false"))
+        .token(admin)
+        .send()
+        .await;
+    assert_eq!(r.json["meta"]["total"], 2);
+    // Selfie: `gpsOff` divalidasi tapi tidak menyaring.
+    let r = app
+        .get(&format!(
+            "/v1/admin/clock/attendance/selfie?{RANGE}&gpsOff=true"
+        ))
+        .token(admin)
+        .send()
+        .await;
+    r.assert_ok();
+    assert_eq!(r.json["meta"]["total"], 2);
+
+    // Detail: `gps` + ping lokasi di antara event geofence (09:31 enter, 11:00 ping, 12:00 exit).
+    let r = app
+        .get(&format!("/v1/admin/clock/attendance/{}", fx.late))
+        .token(admin)
+        .send()
+        .await;
+    r.assert_ok().assert_no_sql_error();
+    assert_eq!(r.data()["gps"], late_gps);
+    let ev = r.data()["geofenceEvents"].as_array().unwrap();
+    assert_eq!(ev.len(), 3, "{ev:?}");
+    assert_eq!(
+        ev[1],
+        json!({
+            "source": "location",
+            "event": "exit",
+            "geofence": null,
+            "lat": -6.3,
+            "lng": 106.9,
+            "accuracy": 12.5,
+            "timestamp": 1_780_311_600_000_i64
+        })
+    );
+
+    // Ekspor menerima `gpsOff`.
+    for kind in ["excel", "pdf"] {
+        app.get(&format!(
+            "/v1/admin/clock/attendance/export/{kind}?{RANGE}&gpsOff=true"
+        ))
+        .token(admin)
+        .send()
+        .await
+        .assert_ok();
+        let r = app
+            .get(&format!(
+                "/v1/admin/clock/attendance/export/{kind}?{RANGE}&gpsOff=1"
+            ))
+            .token(admin)
+            .send()
+            .await;
+        r.assert_status(400);
+        assert_eq!(r.json["message"], json!(["gpsOff must be a boolean value"]));
+    }
+    reset(&app, c.id).await;
+}

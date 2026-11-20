@@ -8,7 +8,7 @@ use mz_core::{ApiError, ApiResult, AppState};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Postgres, Transaction};
 
-use crate::body::{BreakStartDto, ClockInDto, ClockOutDto, Photo};
+use crate::body::{BreakStartDto, ClockInDto, ClockOutDto, GpsStatusDto, Photo};
 use crate::geo;
 
 /// `DEFAULT_POLICY`.
@@ -694,6 +694,132 @@ pub async fn auto_close(
     Ok(json!({
         "closedCount": stale.len(),
         "shiftIds": stale.iter().map(|(_, u, _)| u.clone()).collect::<Vec<_>>(),
+    }))
+}
+
+/// `GPS_STATUS_CLOCK_SKEW_MS`: toleransi jam device terhadap jam server. Laporan lebih dari ini
+/// di depan jam server ditolak 400; lebih dari ini sebelum clock-in dianggap milik shift lain.
+const GPS_STATUS_CLOCK_SKEW_MS: i64 = 5 * 60 * 1000;
+
+#[derive(sqlx::FromRow)]
+struct GpsStatusUpdated {
+    #[sqlx(rename = "gpsStatus")]
+    gps_status: String,
+    #[sqlx(rename = "gpsStatusUpdatedAt")]
+    gps_status_updated_at: NaiveDateTime,
+    #[sqlx(rename = "gpsLastDisabledAt")]
+    gps_last_disabled_at: Option<NaiveDateTime>,
+    #[sqlx(rename = "gpsDisabledCount")]
+    gps_disabled_count: i32,
+}
+
+fn gps_not_logged(reason: &str) -> Value {
+    json!({ "logged": false, "reason": reason })
+}
+
+/// Node: `reportGpsStatus` — status GPS/izin lokasi dari device selama shift aktif.
+///
+/// TOCTOU: shift dibaca dulu (cek shift kemarin & batas clock-in), lalu ditulis dengan SATU
+/// `UPDATE` bersyarat — `status = 'active'` dan `timestamp` lebih baru dari laporan tersimpan.
+/// Clock-out/auto-close yang menyela membuat UPDATE tidak mengenai baris, dan laporan
+/// bersamaan/tidak berurutan tidak saling menimpa ke arah yang lebih lama. Kenaikan
+/// `gpsDisabledCount` dihitung dari nilai lama baris yang sama, jadi retry tidak dihitung dua kali.
+pub async fn report_gps_status(
+    state: &AppState,
+    user_id: i32,
+    dto: &GpsStatusDto,
+) -> ApiResult<Value> {
+    if dto.timestamp > ms(now_naive()) + GPS_STATUS_CLOCK_SKEW_MS {
+        return Err(ApiError::coded(
+            StatusCode::BAD_REQUEST,
+            "TIMESTAMP_IN_FUTURE",
+            "timestamp is ahead of server time",
+        ));
+    }
+    let db = &state.db;
+    let company_id = mz_core::company::require_company_id(db, user_id).await?;
+    let Some(shift) = find_active_shift(db, user_id, company_id).await? else {
+        return Ok(gps_not_logged("NO_ACTIVE_SHIFT"));
+    };
+    if is_previous_day_shift(db, &shift).await? {
+        return Ok(gps_not_logged("NO_ACTIVE_SHIFT"));
+    }
+    // Laporan offline dari shift sebelumnya yang baru terkirim setelah clock-in baru.
+    if dto.timestamp < ms(shift.clock_in_at) - GPS_STATUS_CLOCK_SKEW_MS {
+        return Ok(gps_not_logged("NO_ACTIVE_SHIFT"));
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    let reported_at = js_date_from_ms(dto.timestamp as f64)?;
+    let (lat, lng, location_at) = match dto.location {
+        #[allow(clippy::cast_precision_loss)]
+        Some((lat, lng, at)) => (Some(lat), Some(lng), Some(js_date_from_ms(at as f64)?)),
+        None => (None, None, None),
+    };
+
+    // Transisi ke status buruk = status tersimpan masih ok / belum ada laporan. Pindah antar
+    // status buruk adalah kejadian yang sama. Ekspresi SET Postgres membaca nilai LAMA baris.
+    let mut qb = sqlx::QueryBuilder::<Postgres>::new(r#"UPDATE "mobileShift" SET "#);
+    if dto.status != "ok" {
+        const BECAME_BAD: &str = r#"("gpsStatus" IS NULL OR "gpsStatus" = 'ok')"#;
+        qb.push(format!(
+            r#""gpsDisabledCount" = "gpsDisabledCount" + CASE WHEN {BECAME_BAD} THEN 1 ELSE 0 END, "#
+        ));
+        qb.push(format!(
+            r#""gpsLastDisabledAt" = CASE WHEN {BECAME_BAD} THEN "#
+        ))
+        .push_bind(reported_at)
+        .push(r#"::timestamp(3) ELSE "gpsLastDisabledAt" END, "#);
+        qb.push(format!(
+            r#""gpsLastDisabledLat" = CASE WHEN {BECAME_BAD} THEN "#
+        ))
+        .push_bind(lat)
+        .push(r#"::double precision ELSE "gpsLastDisabledLat" END, "#);
+        qb.push(format!(
+            r#""gpsLastDisabledLng" = CASE WHEN {BECAME_BAD} THEN "#
+        ))
+        .push_bind(lng)
+        .push(r#"::double precision ELSE "gpsLastDisabledLng" END, "#);
+        qb.push(format!(
+            r#""gpsLastDisabledLocationAt" = CASE WHEN {BECAME_BAD} THEN "#
+        ))
+        .push_bind(location_at)
+        .push(r#"::timestamp(3) ELSE "gpsLastDisabledLocationAt" END, "#);
+    }
+    qb.push(r#""gpsStatus" = "#)
+        .push_bind(dto.status.as_str())
+        .push(r#"::"MobileShiftGpsStatus", "gpsStatusUpdatedAt" = "#)
+        .push_bind(reported_at)
+        .push(r#" WHERE id = "#)
+        .push_bind(shift.id)
+        .push(r#" AND status = 'active' AND ("gpsStatusUpdatedAt" IS NULL OR "gpsStatusUpdatedAt" < "#)
+        .push_bind(reported_at)
+        .push(
+            r#") RETURNING "gpsStatus"::text AS "gpsStatus", "gpsStatusUpdatedAt",
+                 "gpsLastDisabledAt", "gpsDisabledCount""#,
+        );
+    let row: Option<GpsStatusUpdated> = qb.build_query_as().fetch_optional(db).await?;
+
+    let Some(row) = row else {
+        // Bedakan "shift ditutup di sela baca & tulis" dari "sudah ada laporan lebih baru".
+        let current: Option<String> =
+            sqlx::query_scalar(r#"SELECT status::text FROM "mobileShift" WHERE id = $1"#)
+                .bind(shift.id)
+                .fetch_optional(db)
+                .await?;
+        return Ok(gps_not_logged(if current.as_deref() == Some("active") {
+            "STALE"
+        } else {
+            "NO_ACTIVE_SHIFT"
+        }));
+    };
+    Ok(json!({
+        "logged": true,
+        "shiftId": shift.uuid,
+        "gpsStatus": row.gps_status,
+        "gpsStatusUpdatedAt": ms(row.gps_status_updated_at),
+        "gpsLastDisabledAt": row.gps_last_disabled_at.map(ms),
+        "gpsDisabledCount": row.gps_disabled_count,
     }))
 }
 

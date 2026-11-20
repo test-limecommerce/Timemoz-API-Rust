@@ -169,7 +169,7 @@ impl Gen {
             }
             let bg = if idx % 2 == 0 { ROW_EVEN } else { ROW_ODD };
             self.doc.fill_rect(MARGIN, self.y, CONTENT_W, ROW_H, c(bg));
-            let cells = [
+            let cells: [String; COLS.len()] = [
                 (idx + 1).to_string(),
                 row.user_name.clone(),
                 format_timestamp(row.clock_in.at_ms),
@@ -187,6 +187,7 @@ impl Gen {
                 format_duration(row.duration_seconds),
                 format_duration(row.late_seconds),
                 row.status.clone(),
+                row.gps.off_summary(),
                 row.note.clone().unwrap_or_else(|| "-".to_owned()),
             ];
             let mut x = MARGIN;
@@ -251,17 +252,21 @@ impl Gen {
 const ROW_H: f64 = 20.0;
 const HEADER_H: f64 = 22.0;
 const FONT_SIZE: f64 = 7.5;
-const COLS: [(&str, f64); 10] = [
+/// Total lebar = `CONTENT_W` (≈770pt). Kolom GPS Off (72) diambil dari Clock In/Out, kedua
+/// geofence, dan Note. Urutan = urutan `cells` di [`Gen::table`]; panjang array yang sama
+/// mencegah header dan isi bergeser.
+const COLS: [(&str, f64); 11] = [
     ("#", 24.0),
     ("Employee", 95.0),
-    ("Clock In", 105.0),
-    ("In Geofence", 90.0),
-    ("Clock Out", 105.0),
-    ("Out Geofence", 90.0),
+    ("Clock In", 90.0),
+    ("In Geofence", 80.0),
+    ("Clock Out", 90.0),
+    ("Out Geofence", 80.0),
     ("Duration", 55.0),
     ("Late By", 55.0),
     ("Status", 62.0),
-    ("Note", 88.0),
+    ("GPS Off", 72.0),
+    ("Note", 66.0),
 ];
 
 /// `AttendancePdfGenerator.generate(data)`.
@@ -300,6 +305,7 @@ mod tests {
             late_seconds: None,
             status: "closed".into(),
             note: None,
+            gps: crate::attendance::AdminGps::default(),
         }
     }
 

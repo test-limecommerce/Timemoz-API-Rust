@@ -1,5 +1,5 @@
 //! Port modul absensi Mudah-API:
-//! - `src/mobile-clock/**` — 10 route `/mobile/clock/**` + 7 route `/v1/admin/clock/**`
+//! - `src/mobile-clock/**` — 11 route `/mobile/clock/**` + 7 route `/v1/admin/clock/**`
 //!   (generator Excel & PDF absensi, `previous-day-shift.ts`, `selfie-punch-type.ts`);
 //! - `src/mobile-kyc/**` — 2 route `/mobile/kyc/face`;
 //! - `src/mobile-company-config/**` — `GET /mobile/company/config`,
@@ -43,7 +43,9 @@ use mz_core::uuid_rules::uuid_pipe;
 use mz_core::{ApiError, ApiResult, AppState, RequestCtx, RouteSpec};
 use serde_json::{Map, Value, json};
 
-use body::{AttendanceQuery, BreakStartDto, ClockForm, ClockInDto, ClockOutDto, QueryKind};
+use body::{
+    AttendanceQuery, BreakStartDto, ClockForm, ClockInDto, ClockOutDto, GpsStatusDto, QueryKind,
+};
 
 const MOBILE_ROLES: &[Role] = &[
     Role::SYSTEM_ADMIN,
@@ -148,6 +150,20 @@ async fn h_auto_close(
     let threshold = body::parse_auto_close(&fields)?;
     Ok(ok_data(
         clock::auto_close(&state, user_id, threshold).await?,
+    ))
+}
+
+/// Node: src/mobile-clock/mobile-clock.controller.ts:299 `reportGpsStatus` (201).
+async fn h_gps_status(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    req: Request,
+) -> ApiResult<Response> {
+    let user_id = ctx.require_user_id()?;
+    let fields = body::read_plain_body(req).await?;
+    let dto = GpsStatusDto::parse(&fields)?;
+    Ok(created(
+        clock::report_gps_status(&state, user_id, &dto).await?,
     ))
 }
 
@@ -396,6 +412,10 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .route(
             "/mobile/clock/auto-close",
             guard(state, CLOCK_AUTO_CLOSE, post(h_auto_close)),
+        )
+        .route(
+            "/mobile/clock/gps-status",
+            guard(state, CLOCK, post(h_gps_status)),
         )
         .route(
             "/mobile/clock/break/start",
