@@ -1302,3 +1302,167 @@ async fn policy_helpers_against_db() {
     assert_eq!(idx.excluded_dates.len(), 1);
     assert_eq!(idx.by_date.get(&d("2026-10-01")).map(|e| e.id), Some(h));
 }
+
+// ── 5d60d17: akrual Desember Y-1 & hitung ulang lintas tahun ────────────────
+
+async fn auto_deduction(app: &TestApp, co: i32, user: i32, balance: i32, request: i32, days: f64) {
+    app.exec(&format!(
+        r#"INSERT INTO "leaveBalanceAdjustment" ("balanceId", "userId", "companyId", field, delta, reason, source, "leaveRequestId")
+           VALUES ({balance}, {user}, {co}, 'annualLeaveUsed', {days}, 'Potong otomatis', 'AUTO_DEDUCTION', {request})"#
+    ))
+    .await;
+}
+
+#[tokio::test]
+async fn accrual_catches_up_previous_december_and_recomputes_carry() {
+    let Some(app) = app().await else { return };
+    let co = company(&app, JKT, 2, "2025-01-01T00:00:00").await;
+    policy(
+        &app,
+        co.id,
+        r#""accrualMode", "monthlyAccrualDays", "carryOverEnabled", "maxCarryOverDays""#,
+        "'MONTHLY', 1, true, 5",
+    )
+    .await;
+    let (a, b) = (co.users[0], co.users[1]);
+    // A berakrual bulanan s.d. November; B baris UPFRONT (0) → tidak dikejar.
+    let a25 = balance(&app, co.id, a, 2025, 11.0, 8.0, 0.0, 0.0).await;
+    app.exec(&format!(
+        r#"UPDATE "leaveBalance" SET "accruedThroughMonth" = 11 WHERE id = {a25}"#
+    ))
+    .await;
+    let b25 = balance(&app, co.id, b, 2025, 12.0, 0.0, 0.0, 0.0).await;
+    // Saldo 2026 A sudah dibuka dengan bawaan 3 (sisa 2025 sebelum Desember).
+    let a26 = balance(&app, co.id, a, 2026, 0.0, 0.0, 3.0, 0.0).await;
+
+    // 10 Jan 2026: Desember 2025 jatuh tempo; Januari 2026 belum.
+    let now = at("2026-01-10T05:00:00Z");
+    assert_eq!(
+        accrual_catch_up(app.db(), co.id, JKT, now).await.unwrap(),
+        1
+    );
+    assert_eq!(accrual_state(&app, a25).await, (12.0, 12));
+    assert_eq!(accrual_state(&app, b25).await, (12.0, 0));
+    // Sisa 2025 = 4 → bawaan 2026 dikoreksi 3 → 4.
+    assert_eq!(
+        f(
+            &app,
+            &format!(r#"SELECT "carryOverDays" FROM "leaveBalance" WHERE id = {a26}"#)
+        )
+        .await,
+        4.0
+    );
+    let adj = adjustments(&app, a).await;
+    assert_eq!(
+        adj.iter()
+            .map(|x| (x.0.as_str(), x.1, x.2.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("annualLeaveTotal", 1.0, "MONTHLY_ACCRUAL"),
+            ("carryOverDays", 1.0, "CARRY_OVER"),
+        ]
+    );
+    assert_eq!(adj[0].3, Some(format!("accrual:{a25}:2025-12")));
+    assert_eq!(adj[1].5, "Koreksi sisa cuti dibawa: akrual Desember 2025");
+    // Ulang: no-op.
+    assert_eq!(
+        accrual_catch_up(app.db(), co.id, JKT, now).await.unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn recalc_cross_year_charges_each_year_balance() {
+    let Some(app) = app().await else { return };
+    let co = company(&app, JKT, 1, "2025-01-01T00:00:00").await;
+    let u = co.user();
+    let t = leave_type(&app, co.id, true, "ANNUAL").await;
+    let b26 = balance(&app, co.id, u, 2026, 12.0, 2.0, 0.0, 0.0).await;
+    let b27 = balance(&app, co.id, u, 2027, 12.0, 2.0, 0.0, 0.0).await;
+    // Rab 30 Des 2026 .. Sen 4 Jan 2027: 2 hari 2026 + 2 hari 2027 (Jum 1 & Sen 4).
+    let r = request(
+        &app,
+        co.id,
+        u,
+        Some(t),
+        "2026-12-30",
+        "2027-01-04",
+        4.0,
+        "APPROVED",
+        Some("2026-12-01T00:00:00Z"),
+    )
+    .await;
+    auto_deduction(&app, co.id, u, b26, r, 2.0).await;
+    auto_deduction(&app, co.id, u, b27, r, 2.0).await;
+    holiday(&app, co.id, "Tahun Baru", "2027-01-01", false).await;
+
+    assert_eq!(
+        recalc_approved_for_dates(app.db(), co.id, &[d("2027-01-01")], JKT)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(used(&app, b26).await.0, 2.0);
+    assert_eq!(used(&app, b27).await.0, 1.0);
+    assert_eq!(
+        f(
+            &app,
+            &format!(r#"SELECT "totalDays" FROM "leaveRequest" WHERE id = {r}"#)
+        )
+        .await,
+        3.0
+    );
+    let recalc: Vec<(i32, f64, String)> = sqlx::query_as(
+        r#"SELECT "balanceId", delta, reason FROM "leaveBalanceAdjustment"
+           WHERE "leaveRequestId" = $1 AND source = 'LEAVE_RECALC'"#,
+    )
+    .bind(r)
+    .fetch_all(app.db())
+    .await
+    .unwrap();
+    assert_eq!(
+        recalc,
+        vec![(
+            b27,
+            -1.0,
+            format!("Hitung ulang pengajuan #{r} karena perubahan hari libur (saldo 2027)")
+        )]
+    );
+    // Ulang: tagihan per tahun sudah cocok.
+    assert_eq!(
+        recalc_approved_for_dates(app.db(), co.id, &[d("2027-01-01")], JKT)
+            .await
+            .unwrap(),
+        0
+    );
+
+    // Cara lama: seluruh tagihan di saldo tahun mulai (disetujui sebelum pemecahan per tahun).
+    let co = company(&app, JKT, 1, "2025-01-01T00:00:00").await;
+    let u = co.user();
+    let t = leave_type(&app, co.id, true, "ANNUAL").await;
+    let b26 = balance(&app, co.id, u, 2026, 12.0, 4.0, 0.0, 0.0).await;
+    let r = request(
+        &app,
+        co.id,
+        u,
+        Some(t),
+        "2026-12-30",
+        "2027-01-04",
+        4.0,
+        "APPROVED",
+        Some("2026-12-01T00:00:00Z"),
+    )
+    .await;
+    auto_deduction(&app, co.id, u, b26, r, 4.0).await;
+    holiday(&app, co.id, "Tahun Baru", "2027-01-01", false).await;
+    recalc_approved_for_dates(app.db(), co.id, &[d("2027-01-01")], JKT)
+        .await
+        .unwrap();
+    assert_eq!(used(&app, b26).await.0, 3.0);
+    let n: i64 = app
+        .scalar(&format!(
+            r#"SELECT COUNT(*) FROM "leaveBalance" WHERE "userId" = {u} AND year = 2027"#
+        ))
+        .await;
+    assert_eq!(n, 0, "cara lama tidak membuat saldo tahun berikutnya");
+}

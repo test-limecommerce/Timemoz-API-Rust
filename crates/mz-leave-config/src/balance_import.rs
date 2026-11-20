@@ -21,8 +21,10 @@ use mz_core::time::now_naive;
 use mz_core::upload::{assert_csv_file, invalid_file, read_upload};
 use mz_core::{ApiError, ApiResult, AppState, RequestCtx};
 use mz_leave::balance::{NewAdjustment, create_balance_in_tx, insert_adjustment};
+use mz_leave::carry_over::recompute_next_year_carry_over;
 use mz_leave::enums::LeaveBalanceChangeSource;
 use mz_leave::js::{ser_f64, ser_opt_f64};
+use mz_leave::policy::require_time_zone;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sqlx::PgConnection;
@@ -365,21 +367,22 @@ impl Validate for ImportYearQuery {
     }
 }
 
-/// `@Query() ImportYearQueryDto` (pipa jalan SESUDAH `FileInterceptor`) → tahun target.
-fn import_year(raw_query: &str) -> Result<i32, ApiError> {
+/// `@Query() ImportYearQueryDto` (pipa jalan SESUDAH `FileInterceptor`) → tahun target
+/// (`None` = tahun berjalan zona company, ditentukan pemanggil sesudah company diketahui).
+fn import_year(raw_query: &str) -> Result<Option<i32>, ApiError> {
     let query: ImportYearQuery = query_from_str(raw_query)?;
     let errors = query.validate();
     if !errors.is_empty() {
         return Err(ApiError::Validation(errors));
     }
     Ok(match tri_int(query.year.as_ref(), "year")? {
-        Tri::Val(y) => y,
-        _ => current_year(),
+        Tri::Val(y) => Some(y),
+        _ => None,
     })
 }
 
 /// `FileInterceptor` → `@Query()` → `assertBalanceCsvFile` → `parseBalanceCsv`.
-async fn read_import(req: Request) -> Result<(i32, Vec<ParsedRow>), ApiError> {
+async fn read_import(req: Request) -> Result<(Option<i32>, Vec<ParsedRow>), ApiError> {
     let raw_query = req.uri().query().unwrap_or_default().to_owned();
     let upload = read_upload(req, MAX_BALANCE_IMPORT_BYTES, LIMIT_LABEL).await?;
     let year = import_year(&raw_query)?;
@@ -494,6 +497,10 @@ pub async fn import_preview(
 ) -> ApiResult<Json<PreviewResult>> {
     let (year, rows) = read_import(req).await?;
     let company_id = company_of(&state, &ctx).await?;
+    let year = match year {
+        Some(y) => y,
+        None => current_year(&state, company_id).await?,
+    };
     let mut conn = state.db.acquire().await?;
     let members = active_members_by_email(&mut conn, company_id).await?;
     let ids: Vec<i32> = members.values().map(|m| m.user_id).collect();
@@ -529,6 +536,10 @@ pub async fn import_balances(
     let (year, rows) = read_import(req).await?;
     let requester_id = ctx.require_user_id()?;
     let company_id = company_of(&state, &ctx).await?;
+    let year = match year {
+        Some(y) => y,
+        None => current_year(&state, company_id).await?,
+    };
 
     let mut tx = state.db.begin().await?;
     mz_core::db::advisory_xact_lock(&mut tx, &format!("leave-balance-import:{company_id}")).await?;
@@ -612,6 +623,23 @@ pub async fn import_balances(
             },
         )
         .await?;
+    }
+    if !classification.to_update.is_empty() {
+        // Semua baris tahun Y sudah terkunci (urut id) sebelum helper mengunci Y+1; import lain
+        // tertahan advisory lock company, jalur lain mengunci tahun naik, jadi tak deadlock.
+        let tz = require_time_zone(&mut *tx, company_id).await?;
+        for r in &classification.to_update {
+            recompute_next_year_carry_over(
+                &mut tx,
+                company_id,
+                r.user_id,
+                year,
+                &tz,
+                Some(BALANCE_IMPORT_REASON.to_owned()),
+                now,
+            )
+            .await?;
+        }
     }
     tx.commit().await?;
 

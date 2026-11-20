@@ -555,3 +555,317 @@ async fn reject_revision_visibility_and_validation() {
     assert_eq!(res.json["rejectionReason"], "tidak bisa");
     assert!(res.json["reviewedAt"].is_string());
 }
+
+/// Hari kerja Senin–Jumat di `[from, to]` (tanpa libur), untuk ekspektasi lintas tahun.
+fn weekdays(from: chrono::NaiveDate, to: chrono::NaiveDate) -> f64 {
+    use chrono::Datelike;
+    #[allow(clippy::cast_precision_loss)]
+    let n = from
+        .iter_days()
+        .take_while(|d| *d <= to)
+        .filter(|d| d.weekday().number_from_monday() <= 5)
+        .count() as f64;
+    n
+}
+
+// 677a060: cuti 31 Des / 1 Jan dipotong per tahun; baris Y+1 dibuat di dalam transaksi
+// persetujuan; catatan hangus Y dikoreksi oleh recomputeNextYearCarryOver.
+#[tokio::test]
+async fn approve_cross_year_charges_each_year() {
+    let Some((app, _em)) = app("flow_x1").await else {
+        return;
+    };
+    let _g = SERIAL.lock().await;
+    let fx = app.company().await;
+    reset(&app, &fx).await;
+    let y = this_year();
+    let t = leave_type(&app, fx.id, true, "ANNUAL", false, None).await;
+    let prev = balance(&app, fx.id, fx.staff.id, y, 12.0, 0.0, 0.0, 0.0, 0.0).await;
+    let start = chrono::NaiveDate::from_ymd_opt(y, 12, 29).unwrap();
+    let end = chrono::NaiveDate::from_ymd_opt(y + 1, 1, 5).unwrap();
+    let d1 = weekdays(start, chrono::NaiveDate::from_ymd_opt(y, 12, 31).unwrap());
+    let d2 = weekdays(chrono::NaiveDate::from_ymd_opt(y + 1, 1, 1).unwrap(), end);
+    let r = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        start,
+        end,
+        d1 + d2,
+        "PENDING",
+        Some(fx.admin.id),
+    )
+    .await;
+    let res = app
+        .put(&format!("/leaves/{}/approve", r.uuid))
+        .token(&fx.admin.token)
+        .send()
+        .await;
+    res.assert_status(200);
+    assert_eq!(res.json["totalDays"].as_f64(), Some(d1 + d2));
+    // balanceBefore/After = saldo tahun mulai.
+    assert_eq!(res.json["balanceBefore"], 12);
+    assert_eq!(res.json["balanceAfter"].as_f64(), Some(12.0 - d1));
+    assert_eq!(bal_row(&app, prev).await.1, d1);
+    let next: i32 = app
+        .scalar(&format!(
+            r#"SELECT id FROM "leaveBalance" WHERE "userId" = {} AND "companyId" = {} AND year = {}"#,
+            fx.staff.id,
+            fx.id,
+            y + 1
+        ))
+        .await;
+    assert_eq!(bal_row(&app, next).await.1, d2);
+
+    let adj = adjustments(&app, fx.staff.id).await;
+    let auto: Vec<f64> = adj
+        .iter()
+        .filter(|a| a.2 == "AUTO_DEDUCTION")
+        .map(|a| a.1)
+        .collect();
+    assert_eq!(auto, vec![d1, d2]);
+    // Bawa sisa tidak aktif → seluruh sisa Y hangus, dikoreksi sesudah potongan Y.
+    let forfeit: Vec<f64> = adj
+        .iter()
+        .filter(|a| a.2 == "FORFEIT")
+        .map(|a| a.1)
+        .collect();
+    assert_eq!(forfeit, vec![-(12.0 - d1)]);
+}
+
+// 677a060: tumpang tindih dengan cuti APPROVED dicek ulang di bawah kunci saldo; klaim
+// di-rollback (status tetap PENDING).
+#[tokio::test]
+async fn approve_rejects_overlap_with_approved() {
+    let Some((app, _em)) = app("flow_x2").await else {
+        return;
+    };
+    let _g = SERIAL.lock().await;
+    let fx = app.company().await;
+    reset(&app, &fx).await;
+    let y = this_year();
+    let t = leave_type(&app, fx.id, true, "ANNUAL", false, None).await;
+    let b = balance(&app, fx.id, fx.staff.id, y, 12.0, 0.0, 0.0, 0.0, 0.0).await;
+    let mon = first_monday(y, 3);
+    request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        mon,
+        plus(mon, 1),
+        2.0,
+        "APPROVED",
+        Some(fx.admin.id),
+    )
+    .await;
+    let r = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        plus(mon, 1),
+        plus(mon, 2),
+        2.0,
+        "PENDING",
+        Some(fx.admin.id),
+    )
+    .await;
+    let res = app
+        .put(&format!("/leaves/{}/approve", r.uuid))
+        .token(&fx.admin.token)
+        .send()
+        .await;
+    res.assert_status(400);
+    assert_eq!(
+        res.json,
+        json!({
+            "code": "LEAVE_OVERLAP",
+            "message": format!(
+                "Tanggal cuti bertabrakan dengan pengajuan lain ({} s.d. {}, status APPROVED)",
+                key(mon),
+                key(plus(mon, 1))
+            ),
+        })
+    );
+    assert_eq!(status_of(&app, r.id).await, "PENDING");
+    assert_eq!(bal_row(&app, b).await.1, 0.0);
+
+    // Sore & pagi di tanggal yang sama tidak bentrok.
+    let r2 = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        plus(mon, 7),
+        plus(mon, 7),
+        0.5,
+        "APPROVED",
+        Some(fx.admin.id),
+    )
+    .await;
+    app.exec(&format!(
+        r#"UPDATE "leaveRequest" SET "startDayType" = 'HALF_DAY_MORNING' WHERE id = {}"#,
+        r2.id
+    ))
+    .await;
+    let r3 = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        plus(mon, 7),
+        plus(mon, 7),
+        0.5,
+        "PENDING",
+        Some(fx.admin.id),
+    )
+    .await;
+    app.exec(&format!(
+        r#"UPDATE "leaveRequest" SET "startDayType" = 'HALF_DAY_AFTERNOON' WHERE id = {}"#,
+        r3.id
+    ))
+    .await;
+    app.put(&format!("/leaves/{}/approve", r3.uuid))
+        .token(&fx.admin.token)
+        .send()
+        .await
+        .assert_status(200);
+}
+
+// 677a060: sakit DEDUCT_ANNUAL mengikuti aturan tahunan (bawaan dulu) dan bawaan Y+1 dikoreksi
+// walau Y masih tahun berjalan.
+#[tokio::test]
+async fn sick_deduct_annual_uses_carry_and_recomputes_next_year() {
+    let Some((app, _em)) = app("flow_x3").await else {
+        return;
+    };
+    let _g = SERIAL.lock().await;
+    let fx = app.company().await;
+    reset(&app, &fx).await;
+    app.exec(&format!(
+        r#"UPDATE "leavePolicy" SET "carryOverEnabled" = true, "maxCarryOverDays" = 5 WHERE "companyId" = {}"#,
+        fx.id
+    ))
+    .await;
+    let y = this_year();
+    let t = leave_type(&app, fx.id, true, "SICK", false, None).await;
+    let cur = balance(&app, fx.id, fx.staff.id, y, 12.0, 6.0, 2.0, 0.0, 0.0).await;
+    let next = balance(&app, fx.id, fx.staff.id, y + 1, 12.0, 0.0, 5.0, 0.0, 0.0).await;
+    let mon = first_monday(y, 4);
+    let r = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        mon,
+        plus(mon, 2),
+        3.0,
+        "PENDING",
+        Some(fx.admin.id),
+    )
+    .await;
+    let res = app
+        .put(&format!("/leaves/{}/approve", r.uuid))
+        .token(&fx.admin.token)
+        .send()
+        .await;
+    res.assert_status(200);
+    // Bawaan 2 dulu, lalu 1 dari tahunan; sickLeaveUsed tak tersentuh.
+    let (_, used, _, carry_used, sick_used) = bal_row(&app, cur).await;
+    assert_eq!((used, carry_used, sick_used), (7.0, 2.0, 0.0));
+    // Sisa tahunan Y = 12 - 7 = 5 → bawaan Y+1 tetap 5 (batas 5); tak ada koreksi.
+    assert_eq!(bal_row(&app, next).await.2, 5.0);
+
+    // Pengajuan kedua menurunkan sisa Y ke 3 → bawaan Y+1 dikoreksi ke 3 (tahun berjalan pun).
+    let r2 = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        plus(mon, 7),
+        plus(mon, 8),
+        2.0,
+        "PENDING",
+        Some(fx.admin.id),
+    )
+    .await;
+    app.put(&format!("/leaves/{}/approve", r2.uuid))
+        .token(&fx.admin.token)
+        .send()
+        .await
+        .assert_status(200);
+    assert_eq!(bal_row(&app, next).await.2, 3.0);
+    let last = adjustments(&app, fx.staff.id).await.pop().unwrap();
+    assert_eq!(
+        (last.0.as_str(), last.1, last.2.as_str()),
+        ("carryOverDays", -2.0, "CARRY_OVER")
+    );
+}
+
+// 677a060: REJECTED (termasuk "Cancelled by employee") tak bisa ditolak ulang; pembatalan
+// pengajuan yang sudah APPROVED ditolak.
+#[tokio::test]
+async fn reject_only_reviewable_and_cancel_claims() {
+    let Some((app, _em)) = app("flow_x4").await else {
+        return;
+    };
+    let _g = SERIAL.lock().await;
+    let fx = app.company().await;
+    reset(&app, &fx).await;
+    let y = this_year();
+    let t = leave_type(&app, fx.id, false, "ANNUAL", false, None).await;
+    let mon = first_monday(y, 6);
+    let r = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        mon,
+        mon,
+        1.0,
+        "REJECTED",
+        Some(fx.admin.id),
+    )
+    .await;
+    let res = app
+        .put(&format!("/leaves/{}/reject", r.uuid))
+        .token(&fx.admin.token)
+        .json(&json!({ "rejectionReason": "lagi" }))
+        .send()
+        .await;
+    res.assert_status(400);
+    assert_eq!(
+        res.json["message"],
+        "Only pending or needs-revision requests can be rejected"
+    );
+
+    let p = request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        plus(mon, 7),
+        plus(mon, 7),
+        1.0,
+        "PENDING",
+        Some(fx.admin.id),
+    )
+    .await;
+    app.delete(&format!("/mobile/leaves/{}", p.uuid))
+        .token(&fx.staff.token)
+        .send()
+        .await
+        .assert_status(200);
+    assert_eq!(status_of(&app, p.id).await, "REJECTED");
+}

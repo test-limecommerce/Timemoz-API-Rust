@@ -9,6 +9,8 @@ use mz_core::iso8601::DateArg;
 use mz_core::{ApiError, ApiResult, AppState};
 use rust_xlsxwriter::{Chart, ChartSolidFill, Color, Format, FormatAlign, Workbook, Worksheet};
 
+use mz_leave::window::{StoredLeave, leave_days_within_stored, load_clip_ctx, month_range};
+
 use crate::dto::{ReportFormat, ReportQuery};
 use crate::model::Visibility;
 use crate::util::{fmt_date, fmt_date_time, invalid_date, month_label, round};
@@ -251,6 +253,8 @@ struct ItemRow {
     leave_type: Option<String>,
     start_date: NaiveDate,
     end_date: NaiveDate,
+    start_day_type: String,
+    end_day_type: String,
     total_days: f64,
     reason: String,
     status: String,
@@ -293,7 +297,9 @@ pub async fn generate_report(
 
     let mut qb = sqlx::QueryBuilder::new(
         r#"SELECT lr."userId" AS user_id, lr."leaveType"::text AS leave_type,
-                  lr."startDate" AS start_date, lr."endDate" AS end_date, lr."totalDays" AS total_days,
+                  lr."startDate" AS start_date, lr."endDate" AS end_date,
+                  lr."startDayType"::text AS start_day_type, lr."endDayType"::text AS end_day_type,
+                  lr."totalDays" AS total_days,
                   lr.reason, lr.status::text AS status, lr."createdAt" AS created_at,
                   lr."reviewedAt" AS reviewed_at, lr."balanceBefore" AS balance_before,
                   lr."balanceAfter" AS balance_after, lr."approvalNote" AS approval_note,
@@ -357,16 +363,56 @@ pub async fn generate_report(
 
     // Agregasi = pemakaian nyata → hanya APPROVED.
     let approved: Vec<&ItemRow> = items.iter().filter(|i| i.status == "APPROVED").collect();
+    let stored: Vec<StoredLeave> = approved
+        .iter()
+        .map(|i| {
+            StoredLeave::new(
+                i.start_date,
+                i.end_date,
+                &i.start_day_type,
+                &i.end_day_type,
+                i.total_days,
+                i.reviewed_at,
+            )
+        })
+        .collect();
+
+    // Jendela = rentang filter; ujung terbuka memakai cakupan pengajuan tersetujui.
+    let mut win_start = start.map(|s| s.date());
+    let mut win_end = end.map(|e| e.date());
+    if !approved.is_empty() {
+        if win_start.is_none() {
+            win_start = approved.iter().map(|i| i.start_date).min();
+        }
+        if win_end.is_none() {
+            win_end = approved.iter().map(|i| i.end_date).max();
+        }
+    }
+    let clip = match (win_start, win_end) {
+        (Some(from), Some(to)) if !approved.is_empty() => {
+            let mut conn = state.db.acquire().await?;
+            Some(load_clip_ctx(&mut conn, company_id, from, to, &stored).await?)
+        }
+        _ => None,
+    };
+    let days_in_window = |r: &StoredLeave, from: NaiveDate, to: NaiveDate| -> f64 {
+        let from = win_start.map_or(from, |w| w.max(from));
+        let to = win_end.map_or(to, |w| w.min(to));
+        clip.as_ref()
+            .map_or(0.0, |c| leave_days_within_stored(r, from, to, c))
+    };
+
     let mut type_map: Vec<(String, f64)> = Vec::new();
-    for i in &approved {
+    for (i, r) in approved.iter().zip(&stored) {
         let key = i
             .type_name
             .clone()
             .or_else(|| i.leave_type.clone())
             .unwrap_or_else(|| "Lainnya".to_owned());
+        let days = days_in_window(r, r.start, r.end);
         match type_map.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, v)) => *v += i.total_days,
-            None => type_map.push((key, i.total_days)),
+            Some((_, v)) => *v += days,
+            None => type_map.push((key, days)),
         }
     }
     let mut type_agg: Vec<AggItem> = type_map
@@ -378,12 +424,26 @@ pub async fn generate_report(
         .collect();
     type_agg.sort_by(|a, b| b.value.total_cmp(&a.value));
 
-    // Kunci `YYYY-MM` dengan bulan 0-based (seperti Node), urut leksikografis.
+    // Kunci `YYYY-MM` dengan bulan 0-based (seperti Node), urut leksikografis. Satu ember per
+    // bulan yang disentuh pengajuan, berisi hanya hari bulan itu.
     let mut month_map: BTreeMap<String, (i32, u32, f64)> = BTreeMap::new();
-    for i in &approved {
-        let (y, m0) = (i.start_date.year(), i.start_date.month0());
-        let key = format!("{y}-{m0:02}");
-        month_map.entry(key).or_insert((y, m0, 0.0)).2 += i.total_days;
+    for r in &stored {
+        let (mut y, mut m) = (r.start.year(), r.start.month());
+        while (y, m) <= (r.end.year(), r.end.month()) {
+            let Some((m_start, m_end)) = month_range(y, m) else {
+                break;
+            };
+            let days = days_in_window(r, m_start, m_end);
+            if days > 0.0 {
+                let key = format!("{y}-{:02}", m - 1);
+                month_map.entry(key).or_insert((y, m - 1, 0.0)).2 += days;
+            }
+            m += 1;
+            if m > 12 {
+                m = 1;
+                y += 1;
+            }
+        }
     }
     let years: std::collections::HashSet<i32> = month_map.values().map(|(y, _, _)| *y).collect();
     let multi_year = years.len() > 1;

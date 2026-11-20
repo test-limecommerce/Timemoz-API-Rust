@@ -2248,6 +2248,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "fred",
+ "http",
  "mz-audit",
  "mz-core",
  "mz-int-common",

@@ -9,6 +9,7 @@ use mz_leave::enums::LeaveSickMode;
 use mz_leave::math::resolve_sick_mode;
 use mz_leave::models::{BALANCE_COLUMNS, LeaveBalance};
 use mz_leave::policy::{load_policy, policy_carry_over_expired, require_time_zone};
+use mz_leave::window::{StoredLeave, leave_days_within_stored, load_clip_ctx};
 use serde_json::{Value, json};
 
 use crate::dto::{AnalyticsQuery, OverviewQuery};
@@ -31,6 +32,8 @@ struct LeaveLite {
     leave_type: Option<String>,
     start_date: NaiveDate,
     end_date: NaiveDate,
+    start_day_type: String,
+    end_day_type: String,
     total_days: f64,
     status: String,
     created_at: NaiveDateTime,
@@ -42,6 +45,7 @@ struct LeaveLite {
 
 const LITE_SELECT: &str = r#"SELECT lr.id, lr.uuid::text AS uuid, lr."userId" AS user_id,
     lr."leaveType"::text AS leave_type, lr."startDate" AS start_date, lr."endDate" AS end_date,
+    lr."startDayType"::text AS start_day_type, lr."endDayType"::text AS end_day_type,
     lr."totalDays" AS total_days, lr.status::text AS status, lr."createdAt" AS created_at,
     lr."reviewedAt" AS reviewed_at, lt.id AS type_id, lt.name AS type_name, u.name AS user_name
   FROM "leaveRequest" lr
@@ -64,6 +68,17 @@ impl LeaveLite {
             Some(id) => format!("cfg:{id}"),
             None => format!("legacy:{}", self.leave_type.as_deref().unwrap_or("other")),
         }
+    }
+
+    fn stored(&self) -> StoredLeave {
+        StoredLeave::new(
+            self.start_date,
+            self.end_date,
+            &self.start_day_type,
+            &self.end_day_type,
+            self.total_days,
+            self.reviewed_at,
+        )
     }
 
     fn overlaps(&self, from: NaiveDate, to: NaiveDate) -> bool {
@@ -192,6 +207,17 @@ pub async fn analytics(
     let policy = load_policy(&state.db, company_id).await?;
     let work = work_seconds(state, company_id, user_scope, period_start, period_end).await?;
 
+    // Hari dipotong ke tahun laporan dengan aturan hari kerja/libur yang sama dengan saldo.
+    let year_first = NaiveDate::from_ymd_opt(year32, 1, 1).ok_or_else(invalid_date)?;
+    let year_last = NaiveDate::from_ymd_opt(year32, 12, 31).ok_or_else(invalid_date)?;
+    let clip = {
+        let stored: Vec<StoredLeave> = requests.iter().map(LeaveLite::stored).collect();
+        let mut conn = state.db.acquire().await?;
+        load_clip_ctx(&mut conn, company_id, year_first, year_last, &stored).await?
+    };
+    let days_in_year =
+        |r: &LeaveLite| leave_days_within_stored(&r.stored(), year_first, year_last, &clip);
+
     // ── Status ──
     let count = |s: &str| requests.iter().filter(|r| r.status == s).count();
     let status_breakdown = json!({
@@ -232,11 +258,12 @@ pub async fn analytics(
             }
         };
         if let Some((_, e)) = types.get_mut(idx) {
+            let year_days = days_in_year(r);
             e.requested_count += 1;
-            e.requested_days += r.total_days;
+            e.requested_days += year_days;
             if r.status == "APPROVED" {
                 e.approved_count += 1;
-                e.approved_days += r.total_days;
+                e.approved_days += year_days;
             }
         }
     }
@@ -272,7 +299,12 @@ pub async fn analytics(
             "monthLabel": month_label(i64::from(m) - 1),
             "peopleCount": people.len(),
             "requestCount": in_month.len(),
-            "totalDays": num(round(in_month.iter().map(|r| r.total_days).sum::<f64>())),
+            "totalDays": num(round(
+                in_month
+                    .iter()
+                    .map(|r| leave_days_within_stored(&r.stored(), m_start, m_end, &clip))
+                    .sum::<f64>()
+            )),
         }));
     }
 
@@ -301,9 +333,10 @@ pub async fn analytics(
     let mut approved_days: HashMap<i32, f64> = HashMap::new();
     let mut requested_days: HashMap<i32, f64> = HashMap::new();
     for r in &requests {
-        *requested_days.entry(r.user_id).or_default() += r.total_days;
+        let year_days = days_in_year(r);
+        *requested_days.entry(r.user_id).or_default() += year_days;
         if r.status == "APPROVED" {
-            *approved_days.entry(r.user_id).or_default() += r.total_days;
+            *approved_days.entry(r.user_id).or_default() += year_days;
         }
     }
     let tz = require_time_zone(&state.db, company_id).await?;
@@ -564,12 +597,23 @@ pub async fn overview(
         .collect();
 
     // ── Pemakaian per jenis (disetujui, tahun terpilih) ──
+    // Dipotong ke tahun / bulan terpilih, aturan hari kerja & libur sama dengan saldo.
+    let ov_clip = {
+        let stored: Vec<StoredLeave> = year_requests
+            .iter()
+            .filter(|r| r.status == "APPROVED")
+            .map(LeaveLite::stored)
+            .collect();
+        let mut conn = state.db.acquire().await?;
+        load_clip_ctx(&mut conn, company_id, year_start, year_end, &stored).await?
+    };
     let mut usage: Vec<(String, Option<i32>, String, f64)> = Vec::new();
     for r in year_requests.iter().filter(|r| r.status == "APPROVED") {
         let key = r.type_key();
+        let days = leave_days_within_stored(&r.stored(), year_start, year_end, &ov_clip);
         match usage.iter_mut().find(|(k, ..)| *k == key) {
-            Some(e) => e.3 += r.total_days,
-            None => usage.push((key, r.type_id, r.type_name("Lainnya"), r.total_days)),
+            Some(e) => e.3 += days,
+            None => usage.push((key, r.type_id, r.type_name("Lainnya"), days)),
         }
     }
     let mut usage: Vec<(Option<i32>, String, f64)> = usage
@@ -595,7 +639,8 @@ pub async fn overview(
         .iter()
         .filter(|r| r.status == "APPROVED" && r.overlaps(month_start, month_end))
     {
-        *leave_days.entry(r.user_id).or_default() += r.total_days;
+        *leave_days.entry(r.user_id).or_default() +=
+            leave_days_within_stored(&r.stored(), month_start, month_end, &ov_clip);
     }
     let work_vs_leave = json!({
         "year": year,

@@ -24,7 +24,10 @@ use crate::jobs::{
 };
 use crate::mail::{LeaveMailDetails, send_leave_request_to_approver};
 use crate::policy::company_time_zone;
-use crate::schedule::{accrual_catch_up, ensure_year_open, expire_carry_over, top_up_to_upfront};
+use crate::schedule::{
+    accrual_catch_up, accrual_catch_up_previous_year, ensure_year_open, expire_carry_over,
+    top_up_to_upfront,
+};
 
 /// `TICK_TIMEOUT_MS` (15 menit).
 pub const TICK_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -241,7 +244,12 @@ pub async fn tick_company(
     time_zone: &str,
     now: NaiveDateTime,
 ) -> anyhow::Result<()> {
+    // Akrual Y-1 (Desember, bulan yang terlewat) lebih dulu: saldo Y yang dibuka sesudahnya
+    // langsung menghitung bawaan dari Y-1 yang lengkap. Saldo Y yang sudah ada dikoreksi oleh
+    // recompute_next_year_carry_over di dalam transaksi kreditnya.
+    accrual_catch_up_previous_year(&state.db, company_id, time_zone, now).await?;
     ensure_year_open(&state.db, company_id, time_zone, now).await?;
+    // Bagian Y-1 di sini hanya satu query kosong; yang dikreditkan adalah tahun berjalan.
     accrual_catch_up(&state.db, company_id, time_zone, now).await?;
     expire_carry_over(&state.db, company_id, time_zone, now).await?;
     apply_due(&state.db, company_id, time_zone, now).await?;

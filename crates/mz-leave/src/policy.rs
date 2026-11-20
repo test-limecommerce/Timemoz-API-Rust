@@ -242,6 +242,8 @@ pub fn push_approver_sql(
 
 /// `propagateSickTotal(tx, companyId, days)`: `sickLeaveTotal` saldo tahun berjalan (zona
 /// company) disamakan; baris yang pernah di-adjust manual (`field = 'sickLeaveTotal'`) dilewati.
+/// Kuota di bawah pemakaian di-clamp per baris (`GREATEST(days, sickLeaveUsed)`) supaya sisa
+/// tak pernah negatif dan satu karyawan tak menggagalkan penyimpanan kebijakan.
 pub async fn propagate_sick_total(
     conn: &mut PgConnection,
     company_id: i32,
@@ -251,7 +253,8 @@ pub async fn propagate_sick_total(
     let tz = require_time_zone(&mut *conn, company_id).await?;
     let year = local_year(now, &tz);
     let done = sqlx::query(
-        r#"UPDATE "leaveBalance" b SET "sickLeaveTotal" = $3, "updatedAt" = $4
+        r#"UPDATE "leaveBalance" b
+              SET "sickLeaveTotal" = GREATEST($3::double precision, b."sickLeaveUsed"), "updatedAt" = $4
            WHERE b."companyId" = $1 AND b.year = $2
              AND NOT EXISTS (SELECT 1 FROM "leaveBalanceAdjustment" a
                              WHERE a."balanceId" = b.id AND a.field = 'sickLeaveTotal')"#,

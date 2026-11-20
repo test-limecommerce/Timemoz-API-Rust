@@ -3,26 +3,28 @@
 //! status baris `holidayLeaveDeduction`, bukan jam berjalan. Satu transaksi pendek per
 //! karyawan; kunci `leaveBalance` selalu diambil lebih dulu.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use mz_core::time::now_naive;
 use sqlx::{PgConnection, PgPool};
 
 use crate::balance::{
-    BalanceDelta, NewAdjustment, apply_balance_delta, find_balance, get_or_create_balance,
-    insert_adjustment, lock_balance,
+    BalanceDelta, NewAdjustment, apply_balance_delta, find_balance_by_id, get_or_create_balance,
+    get_or_create_balance_in, insert_adjustment, lock_balance,
 };
 use crate::calendar::{OffDays, load_holiday_index, off_day_predicate};
-use crate::day_count::{count_leave_days, is_sat_sun};
+use crate::carry_over::recompute_next_year_carry_over;
+use crate::day_count::is_sat_sun;
 use crate::enums::{
     HOLIDAY_DEDUCTION_APPLIED, HOLIDAY_DEDUCTION_REVERSED, LeaveBalanceChangeSource,
     LeaveBalanceSource, LeaveDayType, LeaveSickMode, LeaveStatus, LeaveType,
 };
 use crate::js::{num_str, round2};
 use crate::math::{BalanceAmounts, carry_available, resolve_sick_mode, split_deduction};
-use crate::models::{DEDUCTION_COLUMNS, HolidayLeaveDeduction, HolidayState};
+use crate::models::{DEDUCTION_COLUMNS, HolidayLeaveDeduction, HolidayState, LeaveBalance};
 use crate::policy::{load_policy, local_day_start, local_now, policy_carry_over_expired};
+use crate::segments::count_leave_days_by_year;
 
 /// `{ reversed, applied }`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -158,7 +160,7 @@ async fn reverse_pass(
 
     let mut reversed = 0;
     for (id, balance_id) in rows {
-        match reverse_one(pool, company_id, id, balance_id, &off, now).await {
+        match reverse_one(pool, company_id, id, balance_id, &off, time_zone, now).await {
             Ok(true) => reversed += 1,
             Ok(false) => {}
             Err(e) => tracing::error!("Pembatalan potongan libur {id} gagal: {e}"),
@@ -173,10 +175,11 @@ async fn reverse_one(
     id: i32,
     balance_id: i32,
     off: &OffDays,
+    time_zone: &str,
     now: NaiveDateTime,
 ) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
-    lock_balance(&mut tx, balance_id).await?;
+    let balance = lock_balance(&mut tx, balance_id).await?;
     let fresh: HolidayLeaveDeduction = sqlx::query_as(&format!(
         r#"SELECT {DEDUCTION_COLUMNS} FROM "holidayLeaveDeduction" d WHERE d.id = $1"#
     ))
@@ -228,6 +231,22 @@ async fn reverse_one(
         },
     )
     .await?;
+    if fresh.annual_deducted > 0.0 || fresh.carry_over_deducted > 0.0 {
+        // Sebelum menulis baris potongan: semua kunci saldo (Y lalu Y+1) diambil lebih dulu.
+        recompute_next_year_carry_over(
+            &mut tx,
+            fresh.company_id,
+            fresh.user_id,
+            balance.year,
+            time_zone,
+            Some(format!(
+                "Koreksi sisa cuti dibawa: potongan {} dibatalkan",
+                fresh.holiday_name
+            )),
+            now,
+        )
+        .await?;
+    }
     sqlx::query(
         r#"UPDATE "holidayLeaveDeduction" SET status = $2, "reversedAt" = $3, "updatedAt" = $3
            WHERE id = $1"#,
@@ -425,6 +444,20 @@ async fn apply_one(
             },
         )
         .await?;
+        // Sebelum upsert baris potongan: kunci saldo Y+1 diambil sebelum kunci baris lain.
+        recompute_next_year_carry_over(
+            &mut tx,
+            company_id,
+            user_id,
+            balance.year,
+            time_zone,
+            Some(format!(
+                "Koreksi sisa cuti dibawa: potongan {}",
+                holiday.name
+            )),
+            now,
+        )
+        .await?;
     }
 
     // Baris tetap ditulis walau potongannya 0, supaya tidak dicoba ulang tiap jam.
@@ -542,7 +575,6 @@ pub async fn recalc_approved_for_dates(
 #[derive(sqlx::FromRow)]
 #[sqlx(rename_all = "camelCase")]
 struct RecalcRequest {
-    id: i32,
     user_id: i32,
     status: LeaveStatus,
     leave_type: Option<LeaveType>,
@@ -550,38 +582,167 @@ struct RecalcRequest {
     end_date: NaiveDate,
     start_day_type: LeaveDayType,
     end_day_type: LeaveDayType,
-    total_days: f64,
     reviewed_at: Option<NaiveDateTime>,
     cfg_deduct_balance: Option<bool>,
     cfg_balance_source: Option<LeaveBalanceSource>,
 }
 
+/// Kolom pemakaian yang bisa dikembalikan/ditagih hitung ulang.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UsedField {
+    Annual,
+    Carry,
+    Sick,
+}
+
+impl UsedField {
+    /// `REFUND_ORDER`: annualLeaveUsed, carryOverUsed, sickLeaveUsed.
+    const REFUND_ORDER: [Self; 3] = [Self::Annual, Self::Carry, Self::Sick];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Annual => "annualLeaveUsed",
+            Self::Carry => "carryOverUsed",
+            Self::Sick => "sickLeaveUsed",
+        }
+    }
+
+    fn parse(field: &str) -> Option<Self> {
+        Self::REFUND_ORDER.into_iter().find(|f| f.name() == field)
+    }
+
+    fn of_balance(self, b: &LeaveBalance) -> f64 {
+        match self {
+            Self::Annual => b.annual_leave_used,
+            Self::Carry => b.carry_over_used,
+            Self::Sick => b.sick_leave_used,
+        }
+    }
+}
+
+/// Tagihan pengajuan ini ke satu saldo per kolom.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Charged {
+    annual: f64,
+    carry: f64,
+    sick: f64,
+}
+
+impl Charged {
+    fn get(self, f: UsedField) -> f64 {
+        match f {
+            UsedField::Annual => self.annual,
+            UsedField::Carry => self.carry,
+            UsedField::Sick => self.sick,
+        }
+    }
+
+    fn add(&mut self, f: UsedField, delta: f64) {
+        let slot = match f {
+            UsedField::Annual => &mut self.annual,
+            UsedField::Carry => &mut self.carry,
+            UsedField::Sick => &mut self.sick,
+        };
+        *slot = round2(*slot + delta);
+    }
+}
+
+/// `YearPlan`: selisih satu tahun saldo. `charged = None` → cara lama tanpa rincian per tahun.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct YearPlan {
+    year: i32,
+    balance_id: i32,
+    diff: f64,
+    charged: Option<Charged>,
+}
+
+/// `planYearChange(...)`: refund annualLeaveUsed dulu, lalu carryOverUsed (sickLeaveUsed untuk
+/// sakit terpisah); dengan riwayat per tahun tiap kolom dibatasi yang memang ditagih pengajuan
+/// ini. Tagihan tambahan hanya sebesar yang tersedia; kekurangannya jadi `intendedDelta`.
+fn plan_year_change(
+    balance: &LeaveBalance,
+    plan: &YearPlan,
+    separate_sick: bool,
+    sick_mode: LeaveSickMode,
+    carry_over_expired: bool,
+) -> (Vec<(UsedField, f64)>, Option<f64>) {
+    let mut adjustments = Vec::new();
+    let diff = plan.diff;
+    if diff < 0.0 {
+        let mut left = -diff;
+        let order: &[UsedField] = match (plan.charged, separate_sick) {
+            (Some(_), _) => &UsedField::REFUND_ORDER,
+            (None, true) => &[UsedField::Sick],
+            (None, false) => &[UsedField::Annual, UsedField::Carry],
+        };
+        for &field in order {
+            let used = field.of_balance(balance);
+            let cap = plan.charged.map_or(used, |c| c.get(field).min(used));
+            let back = round2(left.min(cap.max(0.0)));
+            if back <= 0.0 {
+                continue;
+            }
+            adjustments.push((field, -back));
+            left = round2(left - back);
+        }
+        return (adjustments, None);
+    }
+
+    if separate_sick {
+        // UNLIMITED: pemakaian dicatat tanpa batas jatah.
+        let take = if sick_mode == LeaveSickMode::UNLIMITED {
+            diff
+        } else {
+            diff.min((balance.sick_leave_total - balance.sick_leave_used).max(0.0))
+        };
+        if take > 0.0 {
+            adjustments.push((UsedField::Sick, take));
+        }
+        return (adjustments, (take < diff).then_some(diff));
+    }
+
+    let split = split_deduction(
+        carry_available(&BalanceAmounts::from(balance), carry_over_expired),
+        balance.annual_leave_total - balance.annual_leave_used,
+        diff,
+        true,
+    );
+    if split.from_carry > 0.0 {
+        adjustments.push((UsedField::Carry, split.from_carry));
+    }
+    if split.from_annual > 0.0 {
+        adjustments.push((UsedField::Annual, split.from_annual));
+    }
+    (adjustments, (split.shortfall > 0.0).then_some(diff))
+}
+
+/// `recalcOne(companyId, requestId, timeZone)`: menghitung ulang satu cuti tersetujui per tahun
+/// kalender, sama dengan pemotongan saat disetujui (`countLeaveDaysByYear`).
+///
+/// Yang sudah dibebankan ke tiap tahun dibaca dari riwayat `AUTO_DEDUCTION` + `LEAVE_RECALC`
+/// pengajuan ini (`balanceId` = tahunnya). Pengajuan tanpa baris AUTO_DEDUCTION (disetujui
+/// sebelum riwayat itu ada) memakai cara lama: selisih `totalDays` dibebankan ke tahun mulai.
+/// Cara lama juga dipakai untuk cuti lintas tahun yang seluruh tagihannya ada di saldo tahun
+/// mulai (disetujui sebelum pemecahan per tahun).
+///
+/// Urutan kunci: baris tahun yang belum ada dibuat dulu (naik), baru saldo tahun mulai s.d.
+/// tahun akhir + 1 dikunci (naik), lalu baris `leaveRequest`.
+#[allow(clippy::too_many_lines)]
 async fn recalc_one(
     pool: &PgPool,
     company_id: i32,
     request_id: i32,
     time_zone: &str,
 ) -> anyhow::Result<bool> {
-    let probe: Option<(i32, NaiveDate)> =
-        sqlx::query_as(r#"SELECT "userId", "startDate" FROM "leaveRequest" WHERE id = $1"#)
-            .bind(request_id)
-            .fetch_optional(pool)
-            .await?;
-    let Some((user_id, start)) = probe else {
-        return Ok(false);
-    };
-    let year = chrono::Datelike::year(&start);
-    // Tanpa baris saldo tidak ada yang pernah dipotong, jadi tak ada yang dikoreksi.
-    let Some(balance_row) = find_balance(pool, user_id, company_id, year).await? else {
-        return Ok(false);
-    };
-
+    let now = now_naive();
     let mut tx = pool.begin().await?;
-    let balance = lock_balance(&mut tx, balance_row.id).await?;
-    let request: Option<RecalcRequest> = sqlx::query_as(
-        r#"SELECT r.id, r."userId", r.status::text AS status, r."leaveType"::text AS "leaveType",
+    // APPROVED sudah final: tanggal, jenis hari, jenis cuti, reviewedAt dan baris AUTO_DEDUCTION
+    // tak berubah lagi, jadi boleh dibaca sebelum kunci. totalDays & LEAVE_RECALC dibaca ulang
+    // sesudah kunci.
+    let head: Option<RecalcRequest> = sqlx::query_as(
+        r#"SELECT r."userId", r.status::text AS status, r."leaveType"::text AS "leaveType",
                   r."startDate", r."endDate", r."startDayType"::text AS "startDayType",
-                  r."endDayType"::text AS "endDayType", r."totalDays", r."reviewedAt",
+                  r."endDayType"::text AS "endDayType", r."reviewedAt",
                   t."deductBalance" AS "cfgDeductBalance",
                   t."balanceSource"::text AS "cfgBalanceSource"
            FROM "leaveRequest" r LEFT JOIN "companyLeaveType" t ON t.id = r."leaveTypeId"
@@ -590,144 +751,251 @@ async fn recalc_one(
     .bind(request_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some(request) = request.filter(|r| r.status == LeaveStatus::APPROVED) else {
+    let Some(head) = head.filter(|r| r.status == LeaveStatus::APPROVED) else {
         return Ok(false);
     };
+    let user_id = head.user_id;
+    let start_year = head.start_date.year();
+    let end_year = head.end_date.year();
 
-    let index =
-        load_holiday_index(&mut tx, company_id, request.start_date, request.end_date).await?;
+    // Termasuk tahun akhir + 1: recompute_next_year_carry_over menguncinya, dan kunci itu harus
+    // diambil sebelum baris pengajuan dikunci.
+    let rows: Vec<(i32, i32)> = sqlx::query_as(
+        r#"SELECT id, year FROM "leaveBalance"
+           WHERE "userId" = $1 AND "companyId" = $2 AND year >= $3 AND year <= $4"#,
+    )
+    .bind(user_id)
+    .bind(company_id)
+    .bind(start_year)
+    .bind(end_year + 1)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut id_by_year: HashMap<i32, i32> = rows.into_iter().map(|(id, y)| (y, id)).collect();
+
+    let has_cfg = head.cfg_deduct_balance.is_some();
+    let is_sick = if has_cfg {
+        head.cfg_balance_source == Some(LeaveBalanceSource::SICK)
+    } else {
+        head.leave_type == Some(LeaveType::SICK_LEAVE)
+    };
+    let deducts = match head.cfg_deduct_balance {
+        Some(d) => d,
+        None => matches!(
+            head.leave_type,
+            Some(LeaveType::ANNUAL_LEAVE | LeaveType::SICK_LEAVE)
+        ),
+    };
+    // Penentu cara (per tahun vs lama), dibaca sebelum kunci; keputusannya stabil (cara lama
+    // hanya menulis ke saldo tahun mulai, AUTO_DEDUCTION tak berubah).
+    let prior_charges: Vec<(i32, String)> = if deducts {
+        sqlx::query_as(
+            r#"SELECT "balanceId", source::text FROM "leaveBalanceAdjustment"
+               WHERE "leaveRequestId" = $1 AND source IN ('AUTO_DEDUCTION', 'LEAVE_RECALC')"#,
+        )
+        .bind(request_id)
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        Vec::new()
+    };
+    let start_balance_id = id_by_year.get(&start_year).copied();
+    let legacy_cross_year = end_year > start_year
+        && prior_charges
+            .iter()
+            .all(|(b, _)| Some(*b) == start_balance_id);
+    let per_year =
+        deducts && !legacy_cross_year && prior_charges.iter().any(|(_, s)| s == "AUTO_DEDUCTION");
+    // Cara lama: tanpa baris saldo tahun mulai tidak ada yang pernah dipotong.
+    if !per_year && start_balance_id.is_none() {
+        return Ok(false);
+    }
+
+    let index = load_holiday_index(&mut tx, company_id, head.start_date, head.end_date).await?;
     // FR-046: pola menurut saat cuti disetujui (reviewedAt; data lama tanpa reviewedAt → sekarang).
     let off = off_day_predicate(
         &mut tx,
         company_id,
-        request.start_date,
-        request.end_date,
-        request.reviewed_at.unwrap_or_else(now_naive),
+        head.start_date,
+        head.end_date,
+        head.reviewed_at.unwrap_or(now),
     )
     .await?;
     let is_off = |d: NaiveDate| off.is_off(d);
-    let new_total = count_leave_days(
-        &crate::day_count::to_date_key(request.start_date),
-        &crate::day_count::to_date_key(request.end_date),
-        request.start_day_type,
-        request.end_day_type,
+    let (count, segments) = count_leave_days_by_year(
+        &crate::day_count::to_date_key(head.start_date),
+        &crate::day_count::to_date_key(head.end_date),
+        head.start_day_type,
+        head.end_day_type,
         &index.excluded_dates,
         Some(&is_off),
-    )?
-    .total_days;
-    let diff = round2(new_total - request.total_days);
-    if diff == 0.0 {
+    )?;
+    let new_total = count.total_days;
+    let days_of = |year: i32| {
+        segments
+            .iter()
+            .find(|s| s.year == year)
+            .map_or(0.0, |s| s.days)
+    };
+
+    // Baris yang belum ada dibuat dulu (hanya bila tahun itu harus ditagih), SEBELUM kunci saldo
+    // mana pun: create_balance_in_tx mengambil advisory lock tahun itu lalu mengunci Y-1.
+    if per_year {
+        for year in start_year..=end_year {
+            if id_by_year.contains_key(&year) || days_of(year) <= 0.0 {
+                continue;
+            }
+            let created = get_or_create_balance_in(&mut tx, user_id, company_id, year).await?;
+            id_by_year.insert(year, created.id);
+        }
+    }
+    // Lalu kunci saldo naik per tahun.
+    let mut balance_id_by_year: HashMap<i32, i32> = HashMap::new();
+    for year in start_year..=end_year + 1 {
+        let Some(id) = id_by_year.get(&year).copied() else {
+            continue;
+        };
+        lock_balance(&mut tx, id).await?;
+        balance_id_by_year.insert(year, id);
+    }
+    // Dua hitung ulang pengajuan yang sama (replika berbeda) bisa mengunci tahun berbeda; kunci
+    // baris pengajuan menyerialkan keduanya. Diambil SESUDAH kunci saldo.
+    let current_total: Option<f64> =
+        sqlx::query_scalar(r#"SELECT "totalDays" FROM "leaveRequest" WHERE id = $1 FOR UPDATE"#)
+            .bind(request_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(current_total) = current_total else {
         return Ok(false);
+    };
+
+    let mut plans: Vec<YearPlan> = Vec::new();
+    if per_year {
+        let history: Vec<(i32, String, f64)> = sqlx::query_as(
+            r#"SELECT "balanceId", field, delta FROM "leaveBalanceAdjustment"
+               WHERE "leaveRequestId" = $1 AND source IN ('AUTO_DEDUCTION', 'LEAVE_RECALC')"#,
+        )
+        .bind(request_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        for seg in &segments {
+            // Tanpa baris saldo: tak pernah ditagih dan tak ada yang harus ditagih (0 hari).
+            let Some(balance_id) = balance_id_by_year.get(&seg.year).copied() else {
+                continue;
+            };
+            let mut charged = Charged::default();
+            for (b, field, delta) in &history {
+                if *b != balance_id {
+                    continue;
+                }
+                if let Some(f) = UsedField::parse(field) {
+                    charged.add(f, *delta);
+                }
+            }
+            let already = round2(charged.annual + charged.carry + charged.sick);
+            plans.push(YearPlan {
+                year: seg.year,
+                balance_id,
+                diff: round2(seg.days - already),
+                charged: Some(charged),
+            });
+        }
+    } else if deducts && let Some(balance_id) = balance_id_by_year.get(&start_year).copied() {
+        plans.push(YearPlan {
+            year: start_year,
+            balance_id,
+            diff: round2(new_total - current_total),
+            charged: None,
+        });
     }
 
     let policy = load_policy(&mut *tx, company_id).await?;
-    let has_cfg = request.cfg_deduct_balance.is_some();
-    let is_sick = if has_cfg {
-        request.cfg_balance_source == Some(LeaveBalanceSource::SICK)
-    } else {
-        request.leave_type == Some(LeaveType::SICK_LEAVE)
-    };
-    let deducts = match request.cfg_deduct_balance {
-        Some(d) => d,
-        None => matches!(
-            request.leave_type,
-            Some(LeaveType::ANNUAL_LEAVE | LeaveType::SICK_LEAVE)
-        ),
-    };
+    let sick_mode = resolve_sick_mode(policy.as_ref());
+    let separate_sick = is_sick && sick_mode != LeaveSickMode::DEDUCT_ANNUAL;
+    let spans_years = end_year > start_year;
+    let mut balance_changed = false;
 
-    let mut adjustments: Vec<(&'static str, f64)> = Vec::new();
-    let mut intended: Option<f64> = None;
-    let mut delta = BalanceDelta::default();
-    if deducts {
-        let sick_mode = resolve_sick_mode(policy.as_ref());
-        if is_sick && sick_mode != LeaveSickMode::DEDUCT_ANNUAL {
-            if diff < 0.0 {
-                let back = (-diff).min(balance.sick_leave_used);
-                if back > 0.0 {
-                    delta.sick_leave_used = -back;
-                    adjustments.push(("sickLeaveUsed", -back));
-                }
-            } else {
-                // UNLIMITED: pemakaian dicatat tanpa batas jatah.
-                let take = if sick_mode == LeaveSickMode::UNLIMITED {
-                    diff
-                } else {
-                    diff.min((balance.sick_leave_total - balance.sick_leave_used).max(0.0))
-                };
-                if take > 0.0 {
-                    delta.sick_leave_used = take;
-                    adjustments.push(("sickLeaveUsed", take));
-                }
-                if take < diff {
-                    intended = Some(diff);
-                }
-            }
-        } else if diff < 0.0 {
-            let from_annual = (-diff).min(balance.annual_leave_used);
-            let from_carry = round2(-diff - from_annual).min(balance.carry_over_used);
-            if from_annual > 0.0 {
-                delta.annual_leave_used = -from_annual;
-                adjustments.push(("annualLeaveUsed", -from_annual));
-            }
-            if from_carry > 0.0 {
-                delta.carry_over_used = -from_carry;
-                adjustments.push(("carryOverUsed", -from_carry));
-            }
-        } else {
-            let expired = policy_carry_over_expired(policy.as_ref(), year, time_zone, now_naive());
-            let split = split_deduction(
-                carry_available(&BalanceAmounts::from(&balance), expired),
-                balance.annual_leave_total - balance.annual_leave_used,
-                diff,
-                true,
-            );
-            if split.from_carry > 0.0 {
-                delta.carry_over_used = split.from_carry;
-                adjustments.push(("carryOverUsed", split.from_carry));
-            }
-            if split.from_annual > 0.0 {
-                delta.annual_leave_used = split.from_annual;
-                adjustments.push(("annualLeaveUsed", split.from_annual));
-            }
-            if split.shortfall > 0.0 {
-                intended = Some(diff);
+    for plan in &plans {
+        if plan.diff == 0.0 {
+            continue;
+        }
+        // Baca ulang: koreksi bawaan dari tahun sebelumnya bisa mengubah baris ini.
+        let balance = find_balance_by_id(&mut *tx, plan.balance_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+        let expired = policy_carry_over_expired(policy.as_ref(), plan.year, time_zone, now);
+        let (adjustments, intended) =
+            plan_year_change(&balance, plan, separate_sick, sick_mode, expired);
+        if adjustments.is_empty() {
+            continue;
+        }
+
+        let mut delta = BalanceDelta::default();
+        for (field, amount) in &adjustments {
+            match field {
+                UsedField::Annual => delta.annual_leave_used += amount,
+                UsedField::Carry => delta.carry_over_used += amount,
+                UsedField::Sick => delta.sick_leave_used += amount,
             }
         }
+        apply_balance_delta(&mut tx, plan.balance_id, &delta).await?;
+        if adjustments.iter().any(|(f, _)| *f != UsedField::Sick) {
+            recompute_next_year_carry_over(
+                &mut tx,
+                company_id,
+                user_id,
+                plan.year,
+                time_zone,
+                Some(format!(
+                    "Koreksi sisa cuti dibawa: pengajuan #{request_id} dihitung ulang"
+                )),
+                now,
+            )
+            .await?;
+        }
+
+        let reason = format!(
+            "Hitung ulang pengajuan #{request_id} karena perubahan hari libur{}",
+            if spans_years {
+                format!(" (saldo {})", plan.year)
+            } else {
+                String::new()
+            }
+        );
+        for (i, (field, amount)) in adjustments.into_iter().enumerate() {
+            insert_adjustment(
+                &mut tx,
+                &NewAdjustment {
+                    balance_id: plan.balance_id,
+                    user_id,
+                    company_id,
+                    adjusted_by_id: None,
+                    field: field.name(),
+                    delta: amount,
+                    reason: reason.clone(),
+                    source: LeaveBalanceChangeSource::LEAVE_RECALC,
+                    leave_request_id: Some(request_id),
+                    dedupe_key: None,
+                    holiday_id: None,
+                    intended_delta: if i == 0 { intended } else { None },
+                },
+            )
+            .await?;
+        }
+        balance_changed = true;
     }
 
-    if !adjustments.is_empty() {
-        apply_balance_delta(&mut tx, balance.id, &delta).await?;
+    if !balance_changed && new_total == current_total {
+        // Seperti Prisma `$transaction` yang mengembalikan false: baris saldo yang baru dibuat
+        // tetap disimpan.
+        tx.commit().await?;
+        return Ok(false);
     }
     sqlx::query(r#"UPDATE "leaveRequest" SET "totalDays" = $2, "updatedAt" = $3 WHERE id = $1"#)
-        .bind(request.id)
+        .bind(request_id)
         .bind(new_total)
         .bind(now_naive())
         .execute(&mut *tx)
         .await?;
-    let reason = format!(
-        "Hitung ulang pengajuan #{} karena perubahan hari libur",
-        request.id
-    );
-    for (i, (field, amount)) in adjustments.into_iter().enumerate() {
-        insert_adjustment(
-            &mut tx,
-            &NewAdjustment {
-                balance_id: balance.id,
-                user_id: request.user_id,
-                company_id,
-                adjusted_by_id: None,
-                field,
-                delta: amount,
-                reason: reason.clone(),
-                source: LeaveBalanceChangeSource::LEAVE_RECALC,
-                leave_request_id: Some(request.id),
-                dedupe_key: None,
-                holiday_id: None,
-                intended_delta: if i == 0 { intended } else { None },
-            },
-        )
-        .await?;
-    }
     tx.commit().await?;
     Ok(true)
 }

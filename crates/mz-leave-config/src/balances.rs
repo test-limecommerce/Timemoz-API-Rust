@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 use mz_core::extract::{ValidatedJson, ValidatedQuery};
 use mz_core::jsfmt;
 use mz_core::time::{JsDate, now_naive};
@@ -17,10 +17,11 @@ use mz_core::{ApiError, ApiResult, AppState, RequestCtx};
 use mz_leave::balance::{
     NewAdjustment, create_balance, find_balance, insert_adjustment, lock_balance,
 };
+use mz_leave::carry_over::recompute_next_year_carry_over;
 use mz_leave::enums::{HOLIDAY_DEDUCTION_APPLIED, LeaveBalanceChangeSource};
 use mz_leave::js::{ser_f64, ser_opt_f64};
 use mz_leave::models::{BALANCE_COLUMNS, LeaveBalance};
-use mz_leave::policy::{load_entitlement_inputs, load_policy, require_time_zone};
+use mz_leave::policy::{load_entitlement_inputs, load_policy, local_year, require_time_zone};
 use mz_leave::view::{BalanceView, BalanceViewCtx, load_scheduled_holidays, to_balance_view_with};
 use serde::Serialize;
 use sqlx::{FromRow, Postgres, QueryBuilder};
@@ -29,9 +30,10 @@ use crate::common::{UserMini, company_of};
 use crate::dto::{AdjustLeaveBalanceDto, BalancesQuery, YearQuery};
 use crate::validate::{node_500, parse_id};
 
-/// `new Date().getFullYear()` (produksi `TZ=UTC`).
-pub(crate) fn current_year() -> i32 {
-    now_naive().year()
+/// `currentYear(requesterId)`: tahun berjalan menurut zona waktu company (bukan jam server).
+pub(crate) async fn current_year(state: &AppState, company_id: i32) -> ApiResult<i32> {
+    let tz = require_time_zone(&state.db, company_id).await?;
+    Ok(local_year(now_naive(), &tz))
 }
 
 /// Saldo + `user` (`include: { user: { select: { id, name, username } } }`).
@@ -88,10 +90,13 @@ pub async fn get_balances(
     ValidatedQuery(query): ValidatedQuery<BalancesQuery>,
 ) -> ApiResult<Json<BalancesPage>> {
     let params = query.typed()?;
-    let year = params.year.unwrap_or_else(current_year);
+    let company_id = company_of(&state, &ctx).await?;
+    let year = match params.year {
+        Some(y) => y,
+        None => current_year(&state, company_id).await?,
+    };
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(20);
-    let company_id = company_of(&state, &ctx).await?;
     // `skip` dan `take` adalah Int Prisma: di luar Int32 → galat (500).
     let skip = i32::try_from((i64::from(page) - 1) * i64::from(limit))
         .map_err(|_| node_500("skip di luar Int32"))?;
@@ -218,8 +223,12 @@ pub async fn bulk_initialize(
     ctx: RequestCtx,
     ValidatedQuery(query): ValidatedQuery<YearQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let year = query.year()?.unwrap_or_else(current_year);
+    let year = query.year()?;
     let company_id = company_of(&state, &ctx).await?;
+    let year = match year {
+        Some(y) => y,
+        None => current_year(&state, company_id).await?,
+    };
     let members: Vec<i32> = sqlx::query_scalar(
         r#"SELECT "userId" FROM "userCompany" WHERE "companyId" = $1 AND status = 1 ORDER BY id"#,
     )
@@ -253,8 +262,12 @@ pub async fn initialize_balance(
     Path(user_id): Path<String>,
     ValidatedQuery(query): ValidatedQuery<YearQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let year = query.year()?.unwrap_or_else(current_year);
+    let year = query.year()?;
     let company_id = company_of(&state, &ctx).await?;
+    let year = match year {
+        Some(y) => y,
+        None => current_year(&state, company_id).await?,
+    };
     let user_id = parse_id(&user_id)?;
     // Tanpa cek ini admin bisa membuat saldo di company-nya untuk user company lain.
     let member: Option<i32> = sqlx::query_scalar(
@@ -288,9 +301,12 @@ pub async fn adjust_balance(
     ValidatedJson(dto): ValidatedJson<AdjustLeaveBalanceDto>,
 ) -> ApiResult<Json<BalanceWithUser>> {
     let input = dto.typed()?;
-    let year = input.year.unwrap_or_else(current_year);
     let requester_id = ctx.require_user_id()?;
     let company_id = company_of(&state, &ctx).await?;
+    let year = match input.year {
+        Some(y) => y,
+        None => current_year(&state, company_id).await?,
+    };
     let target = parse_id(&user_id)?;
 
     let mut tx = state.db.begin().await?;
@@ -299,9 +315,8 @@ pub async fn adjust_balance(
             "Saldo cuti karyawan untuk tahun ini belum diinisialisasi",
         ));
     };
-    // DEVIASI (lihat plan/deviations/mz-leave-config.md): Node membaca lalu menulis nilai absolut
-    // tanpa kunci; di sini baris dikunci dan dibaca ulang supaya potongan/akrual yang berjalan
-    // bersamaan tidak tertimpa.
+    // Validasi pada baris yang DIKUNCI, lalu tulis relatif (increment) supaya akrual bulanan,
+    // persetujuan, atau adjust paralel tidak tertimpa nilai absolut dari snapshot basi.
     let balance = lock_balance(&mut tx, found.id).await?;
     let (current, used) = match input.field {
         "annualLeaveTotal" => (balance.annual_leave_total, balance.annual_leave_used),
@@ -325,12 +340,12 @@ pub async fn adjust_balance(
 
     // Nama kolom berasal dari daftar tetap di atas (bukan input mentah).
     let updated: LeaveBalance = sqlx::query_as(&format!(
-        r#"UPDATE "leaveBalance" AS b SET "{}" = $2, "updatedAt" = $3 WHERE b.id = $1
+        r#"UPDATE "leaveBalance" AS b SET "{0}" = b."{0}" + $2, "updatedAt" = $3 WHERE b.id = $1
            RETURNING {BALANCE_COLUMNS}"#,
         input.field
     ))
     .bind(balance.id)
-    .bind(new_value)
+    .bind(input.delta)
     .bind(now_naive())
     .fetch_one(&mut *tx)
     .await?;
@@ -352,6 +367,11 @@ pub async fn adjust_balance(
         },
     )
     .await?;
+    if input.field == "annualLeaveTotal" || input.field == "carryOverDays" {
+        let tz = require_time_zone(&mut *tx, company_id).await?;
+        recompute_next_year_carry_over(&mut tx, company_id, target, year, &tz, None, now_naive())
+            .await?;
+    }
     let user: UserMini = sqlx::query_as("SELECT id, name, username FROM users WHERE id = $1")
         .bind(target)
         .fetch_one(&mut *tx)

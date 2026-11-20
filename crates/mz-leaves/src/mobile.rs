@@ -4,19 +4,22 @@
 use chrono::{Datelike, NaiveDate};
 use mz_core::{ApiError, ApiResult, AppState};
 use mz_leave::balance::{find_balance, get_or_create_balance};
-use mz_leave::calendar::{HolidayIndex, load_holiday_index, off_day_predicate};
-use mz_leave::day_count::{
-    DayCount, ExclusionReason, count_leave_days, date_key_of, parse_date_key,
-};
+use mz_leave::calendar::{HolidayIndex, OffDays, load_holiday_index, off_day_predicate};
+use mz_leave::day_count::{DayCount, ExclusionReason, date_key_of, parse_date_key};
 use mz_leave::enums::{LeaveDayType, LeaveSickMode, LeaveStatus};
 use mz_leave::math::{BalanceAmounts, available, requestable, resolve_sick_mode};
 use mz_leave::policy::{
     get_policy_approvers, load_entitlement_of, load_policy, local_year, policy_carry_over_expired,
     require_time_zone,
 };
+use mz_leave::segments::{
+    LeaveRange, OverlapCalendar, YearSegment, count_leave_days_by_year, find_overlapping_leave,
+    overlap_error,
+};
 use mz_leave::view::{BalanceViewCtx, get_scheduled_holiday_deductions, to_balance_view};
 use serde_json::{Value, json};
 
+use crate::approve::leave_already_processed;
 use crate::dto::{DayCountQuery, MyRequestsQuery, Opt, ReviseDto, SubmitDto};
 use crate::form::Document;
 use crate::model::{
@@ -52,7 +55,7 @@ async fn count_days(
     end_key: &str,
     start_day_type: LeaveDayType,
     end_day_type: LeaveDayType,
-) -> ApiResult<(DayCount, HolidayIndex)> {
+) -> ApiResult<Counted> {
     // Kunci bukan `YYYY-MM-DD` (bentuk ISO lain yang lolos validator) = `Invalid Date` ke
     // Prisma di `loadHolidayIndex` → 500, sebelum `countLeaveDays`.
     let (Some(from), Some(to)) = (parse_date_key(start_key), parse_date_key(end_key)) else {
@@ -64,7 +67,7 @@ async fn count_days(
         off_day_predicate(&mut conn, company_id, from, to, mz_core::time::now_naive()).await?;
     drop(conn);
     let is_off = |d| off.is_off(d);
-    let result = count_leave_days(
+    let (count, segments) = count_leave_days_by_year(
         start_key,
         end_key,
         start_day_type,
@@ -72,10 +75,36 @@ async fn count_days(
         &index.excluded_dates,
         Some(&is_off),
     )?;
-    if result.total_days == 0.0 {
+    if count.total_days == 0.0 {
         return Err(no_working_days());
     }
-    Ok((result, index))
+    Ok(Counted {
+        count,
+        segments,
+        index,
+        off,
+    })
+}
+
+/// Hasil [`count_days`]: total, hari per tahun, indeks libur, pola libur mingguan.
+struct Counted {
+    count: DayCount,
+    segments: Vec<YearSegment>,
+    index: HolidayIndex,
+    off: OffDays,
+}
+
+impl Counted {
+    /// Kalender tumpang tindih (`{ excludedDates, isWeeklyOff }`).
+    fn overlap_calendar<'a>(
+        &'a self,
+        is_off: &'a (dyn Fn(NaiveDate) -> bool + Sync),
+    ) -> OverlapCalendar<'a> {
+        OverlapCalendar {
+            excluded_dates: &self.index.excluded_dates,
+            is_weekly_off: is_off,
+        }
+    }
 }
 
 /// `requestableFor(userId, companyId, year)`: tanpa baris saldo, baris hanya dibuat untuk tahun
@@ -118,7 +147,12 @@ pub async fn day_count_preview(
 ) -> ApiResult<Value> {
     let start_key = date_key_of(&q.start_date);
     let end_key = date_key_of(&q.end_date);
-    let (count, index) = count_days(
+    let Counted {
+        count,
+        segments,
+        index,
+        ..
+    } = count_days(
         state,
         company_id,
         start_key,
@@ -146,11 +180,33 @@ pub async fn day_count_preview(
         .get(..4)
         .and_then(|y| y.parse::<i32>().ok())
         .ok_or_else(invalid_date)?;
-    Ok(json!({
+    let requestable_start = requestable_for(state, user_id, company_id, year).await?;
+    let mut out = json!({
         "totalDays": num(count.total_days),
         "excludedDates": excluded,
-        "requestable": num(requestable_for(state, user_id, company_id, year).await?),
-    }))
+        "requestable": num(requestable_start),
+    });
+    // Lintas tahun: tiap tahun memakai saldonya sendiri. `requestable` tetap tahun awal
+    // (kompatibel mundur); rincian per tahun hanya bila rentang melewati 31 Des.
+    if segments.len() > 1 {
+        let mut by_year = Vec::with_capacity(segments.len());
+        for seg in &segments {
+            let requestable = if seg.year == year {
+                requestable_start
+            } else {
+                requestable_for(state, user_id, company_id, seg.year).await?
+            };
+            by_year.push(json!({
+                "year": seg.year,
+                "days": num(seg.days),
+                "requestable": num(requestable),
+            }));
+        }
+        if let Some(o) = out.as_object_mut() {
+            o.insert("requestableByYear".to_owned(), Value::Array(by_year));
+        }
+    }
+    Ok(out)
 }
 
 /// `companyLeaveType.findFirst({ id, companyId, isActive: true })`.
@@ -194,16 +250,19 @@ async fn used_quota(
     Ok(used.unwrap_or(0.0))
 }
 
-/// `validateBalance(userId, companyId, leaveTypeConfig, totalDays, year)`: kuota tahunan per
-/// jenis lalu saldo (tanpa kunci: pemeriksaan awal; persetujuan memeriksa ulang di bawah kunci).
+/// `validateBalance(userId, companyId, leaveTypeConfig, counted)`: kuota tahunan per jenis
+/// lalu saldo tiap tahun. Hanya peringatan awal (tanpa kunci, TOCTOU disengaja): persetujuan
+/// memeriksa ulang semuanya di bawah `lockBalance` dan itulah gerbang yang menentukan.
 async fn validate_balance(
     state: &AppState,
     user_id: i32,
     company_id: i32,
     cfg: &LeaveTypeConfig,
     total_days: f64,
-    year: i32,
+    segments: &[YearSegment],
 ) -> ApiResult<()> {
+    // Kuota per jenis tetap di tahun mulai: pengajuan yang ada dijumlahkan dengan cara sama.
+    let year = segments.first().map(|s| s.year).ok_or_else(invalid_date)?;
     if let Some(quota) = cfg.annual_quota {
         let used = used_quota(state, user_id, company_id, cfg.id, i64::from(year)).await?;
         let remaining = f64::from(quota) - used;
@@ -218,56 +277,108 @@ async fn validate_balance(
     if !cfg.deduct_balance {
         return Ok(());
     }
-    let balance = get_or_create_balance(&state.db, user_id, company_id, year).await?;
     let policy = load_policy(&state.db, company_id).await?;
     let tz = require_time_zone(&state.db, company_id).await?;
     let now = mz_core::time::now_naive();
+    let sick_mode = resolve_sick_mode(policy.as_ref());
+    let multi_year = segments.len() > 1;
 
-    let check_annual = async |label: &str| -> ApiResult<()> {
-        let expired = policy_carry_over_expired(policy.as_ref(), year, &tz, now);
-        let mut conn = state.db.acquire().await?;
-        let reserved =
-            get_scheduled_holiday_deductions(&mut conn, user_id, company_id, year, &tz, now)
-                .await?
-                .len();
-        #[allow(clippy::cast_precision_loss)]
-        let left = requestable(
-            available(&BalanceAmounts::from(&balance), expired),
-            reserved as f64,
-        );
-        if total_days > left {
-            let suffix = if reserved > 0 {
-                format!(" ({reserved} hari dicadangkan untuk cuti bersama)")
-            } else {
-                String::new()
-            };
-            return Err(ApiError::bad_request(format!(
-                "{label} tidak cukup. Tersisa: {} hari{suffix}.",
-                mz_core::jsfmt::num_string(left)
-            )));
-        }
-        Ok(())
-    };
+    // Cuti yang melintasi 31 Des / 1 Jan diperiksa terhadap saldo tiap tahun.
+    for seg in segments.iter().filter(|s| s.days > 0.0) {
+        let balance = get_or_create_balance(&state.db, user_id, company_id, seg.year).await?;
+        let year_label = if multi_year {
+            format!(" {}", seg.year)
+        } else {
+            String::new()
+        };
 
-    if cfg.balance_source == "SICK" {
-        match resolve_sick_mode(policy.as_ref()) {
-            LeaveSickMode::LIMITED => {
-                let avail = (balance.sick_leave_total - balance.sick_leave_used).max(0.0);
-                if total_days > avail {
-                    return Err(ApiError::bad_request(format!(
-                        "Saldo cuti sakit tidak cukup. Tersisa: {} hari.",
-                        mz_core::jsfmt::num_string(avail)
-                    )));
-                }
+        let check_annual = async |label: &str| -> ApiResult<()> {
+            let expired = policy_carry_over_expired(policy.as_ref(), seg.year, &tz, now);
+            let mut conn = state.db.acquire().await?;
+            let reserved = get_scheduled_holiday_deductions(
+                &mut conn, user_id, company_id, seg.year, &tz, now,
+            )
+            .await?
+            .len();
+            #[allow(clippy::cast_precision_loss)]
+            let left = requestable(
+                available(&BalanceAmounts::from(&balance), expired),
+                reserved as f64,
+            );
+            if seg.days > left {
+                let suffix = if reserved > 0 {
+                    format!(" ({reserved} hari dicadangkan untuk cuti bersama)")
+                } else {
+                    String::new()
+                };
+                return Err(ApiError::bad_request(format!(
+                    "{label}{year_label} tidak cukup. Tersisa: {} hari{suffix}.",
+                    mz_core::jsfmt::num_string(left)
+                )));
             }
-            LeaveSickMode::DEDUCT_ANNUAL => check_annual("Saldo cuti").await?,
-            // UNLIMITED: tanpa batas jumlah cuti sakit.
-            LeaveSickMode::UNLIMITED => {}
+            Ok(())
+        };
+
+        if cfg.balance_source == "SICK" {
+            match sick_mode {
+                LeaveSickMode::LIMITED => {
+                    let avail = (balance.sick_leave_total - balance.sick_leave_used).max(0.0);
+                    if seg.days > avail {
+                        return Err(ApiError::bad_request(format!(
+                            "Saldo cuti sakit{year_label} tidak cukup. Tersisa: {} hari.",
+                            mz_core::jsfmt::num_string(avail)
+                        )));
+                    }
+                }
+                LeaveSickMode::DEDUCT_ANNUAL => check_annual("Saldo cuti").await?,
+                // UNLIMITED: tanpa batas jumlah cuti sakit.
+                LeaveSickMode::UNLIMITED => {}
+            }
+        } else {
+            check_annual("Saldo cuti tahunan").await?;
         }
-    } else {
-        check_annual("Saldo cuti tahunan").await?;
     }
     Ok(())
+}
+
+/// `assertNoOverlap(userId, companyId, range, calendar, excludeId)`: tolak rentang yang
+/// mengklaim hari milik pengajuan hidup lain user. Baca saja (dua submit bersamaan bisa lolos,
+/// TOCTOU); approve memeriksa ulang tumpang tindih APPROVED di bawah kunci saldo.
+async fn assert_no_overlap(
+    state: &AppState,
+    user_id: i32,
+    company_id: i32,
+    range: &LeaveRange,
+    calendar: OverlapCalendar<'_>,
+    exclude_id: Option<i32>,
+) -> ApiResult<()> {
+    let clash = find_overlapping_leave(
+        &state.db,
+        company_id,
+        user_id,
+        exclude_id,
+        &[
+            LeaveStatus::PENDING,
+            LeaveStatus::NEEDS_REVISION,
+            LeaveStatus::APPROVED,
+        ],
+        range,
+        Some(calendar),
+    )
+    .await?;
+    match clash {
+        Some(hit) => Err(overlap_error(&hit)),
+        None => Ok(()),
+    }
+}
+
+/// `discardUpload(key)`: hapus (best effort) objek yang diunggah untuk pengajuan yang tidak
+/// tersimpan. Tidak pernah gagal.
+async fn discard_upload(state: &AppState, key: Option<&str>) {
+    let Some(key) = key else { return };
+    if let Err(e) = mz_files::delete_file(state, key).await {
+        tracing::warn!("Gagal menghapus dokumen cuti yatim {key}: {e}");
+    }
 }
 
 /// `getPolicyApprovers(companyId)` memuat `approver_id`?
@@ -333,7 +444,7 @@ pub async fn submit(
     let end_key = date_key_of(&dto.end_date).to_owned();
     let start_day_type = dto.start_day_type.unwrap_or(LeaveDayType::FULL_DAY);
     let end_day_type = dto.end_day_type.unwrap_or(LeaveDayType::FULL_DAY);
-    let (count, _) = count_days(
+    let counted = count_days(
         state,
         company_id,
         &start_key,
@@ -342,12 +453,34 @@ pub async fn submit(
         end_day_type,
     )
     .await?;
-    let total_days = count.total_days;
+    let total_days = counted.count.total_days;
     let start = key_date(&start_key)?;
     let end = key_date(&end_key)?;
-    let year = start.year();
 
-    validate_balance(state, user_id, company_id, &cfg, total_days, year).await?;
+    let is_off = |d| counted.off.is_off(d);
+    assert_no_overlap(
+        state,
+        user_id,
+        company_id,
+        &LeaveRange {
+            start,
+            end,
+            start_day_type,
+            end_day_type,
+        },
+        counted.overlap_calendar(&is_off),
+        None,
+    )
+    .await?;
+    validate_balance(
+        state,
+        user_id,
+        company_id,
+        &cfg,
+        total_days,
+        &counted.segments,
+    )
+    .await?;
 
     let document_key = match document {
         Some(doc) => Some(upload_document(state, company_id, user_id, doc).await?),
@@ -604,7 +737,7 @@ pub async fn revise(
         .start_day_type
         .unwrap_or_else(|| existing.start_day_type());
     let end_day_type = dto.end_day_type.unwrap_or_else(|| existing.end_day_type());
-    let (count, _) = count_days(
+    let counted = count_days(
         state,
         company_id,
         &start_key,
@@ -613,10 +746,25 @@ pub async fn revise(
         end_day_type,
     )
     .await?;
-    let total_days = count.total_days;
+    let total_days = counted.count.total_days;
     let start = key_date(&start_key)?;
     let end = key_date(&end_key)?;
-    let year = start.year();
+
+    let is_off = |d| counted.off.is_off(d);
+    assert_no_overlap(
+        state,
+        user_id,
+        company_id,
+        &LeaveRange {
+            start,
+            end,
+            start_day_type,
+            end_day_type,
+        },
+        counted.overlap_calendar(&is_off),
+        Some(existing.id),
+    )
+    .await?;
 
     let will_have_document = document.is_some() || existing.document_key.is_some();
     if let Some(c) = &cfg
@@ -630,7 +778,7 @@ pub async fn revise(
     }
     // Pengajuan NEEDS_REVISION tidak ikut terhitung di total PENDING/APPROVED.
     if let Some(c) = &cfg {
-        validate_balance(state, user_id, company_id, c, total_days, year).await?;
+        validate_balance(state, user_id, company_id, c, total_days, &counted.segments).await?;
     }
 
     match dto.approver_id {
@@ -649,10 +797,6 @@ pub async fn revise(
         }
     }
 
-    let document_key = match document {
-        Some(doc) => Some(upload_document(state, company_id, user_id, doc).await?),
-        None => existing.document_key.clone(),
-    };
     let approver = match dto.approver_id.value() {
         Some(a) => Some(i32_of(a)?),
         None => None,
@@ -661,15 +805,26 @@ pub async fn revise(
         Some(t) => Some(i32_of(t)?),
         None => None,
     };
+    let (document_key, uploaded_key) = match document {
+        Some(doc) => {
+            let key = upload_document(state, company_id, user_id, doc).await?;
+            (Some(key.clone()), Some(key))
+        }
+        None => (existing.document_key.clone(), None),
+    };
 
-    sqlx::query(
+    // Klaim berdasar status: approve, tolak, atau batal yang mendarat sejak dibaca di atas
+    // menang, alih-alih tulisan ini membuka lagi pengajuan (approve mungkin sudah memotong).
+    // Key ditulis oleh klaim itu sendiri, jadi objek harus ada lebih dulu; bila klaim kalah
+    // atau gagal, objek baru yatim dan dihapus (best effort).
+    let claim = sqlx::query(
         r#"UPDATE "leaveRequest"
               SET "leaveTypeId" = COALESCE($2, "leaveTypeId"), "approverId" = COALESCE($3, "approverId"),
                   "startDate" = $4, "endDate" = $5,
                   "startDayType" = $6::"LeaveDayType", "endDayType" = $7::"LeaveDayType",
                   "totalDays" = $8, reason = $9, "documentKey" = $10,
                   status = 'PENDING'::"LeaveStatus", "revisionNote" = NULL, "updatedAt" = $11
-            WHERE id = $1"#,
+            WHERE id = $1 AND "userId" = $12 AND status = 'NEEDS_REVISION'::"LeaveStatus""#,
     )
     .bind(existing.id)
     .bind(leave_type)
@@ -682,8 +837,20 @@ pub async fn revise(
     .bind(dto.reason.as_deref().unwrap_or(&existing.reason))
     .bind(document_key.as_deref())
     .bind(mz_core::time::now_naive())
+    .bind(user_id)
     .execute(&state.db)
-    .await?;
+    .await;
+    let claimed = match claim {
+        Ok(r) => r.rows_affected(),
+        Err(e) => {
+            discard_upload(state, uploaded_key.as_deref()).await;
+            return Err(e.into());
+        }
+    };
+    if claimed == 0 {
+        discard_upload(state, uploaded_key.as_deref()).await;
+        return Err(leave_already_processed());
+    }
     let updated = fetch_by_id(&state.db, existing.id)
         .await?
         .ok_or(sqlx::Error::RowNotFound)?;
@@ -704,16 +871,24 @@ pub async fn cancel(state: &AppState, user_id: i32, uuid: &str) -> ApiResult<Req
             "Only pending or needs-revision requests can be cancelled",
         ));
     }
-    sqlx::query(
+    // Klaim berdasar status: approve bersamaan (yang sudah memotong saldo) tidak boleh
+    // tertimpa menjadi REJECTED.
+    let claimed = sqlx::query(
         r#"UPDATE "leaveRequest"
               SET status = 'REJECTED'::"LeaveStatus", "rejectionReason" = 'Cancelled by employee',
                   "updatedAt" = $2
-            WHERE id = $1"#,
+            WHERE id = $1 AND "userId" = $3
+              AND status IN ('PENDING'::"LeaveStatus", 'NEEDS_REVISION'::"LeaveStatus")"#,
     )
     .bind(request.id)
     .bind(mz_core::time::now_naive())
+    .bind(user_id)
     .execute(&state.db)
-    .await?;
+    .await?
+    .rows_affected();
+    if claimed == 0 {
+        return Err(leave_already_processed());
+    }
     let updated = fetch_by_id(&state.db, request.id)
         .await?
         .ok_or(sqlx::Error::RowNotFound)?;

@@ -161,6 +161,17 @@ async fn submit_with_document_quota_and_validation() {
         .await
         .assert_status(404);
 
+    // Tumpang tindih dengan pengajuan PENDING sendiri → 400 LEAVE_OVERLAP (sebelum kuota/saldo).
+    let res = send(fields(&quota_type.to_string(), &manager_s), None).await;
+    res.assert_status(400);
+    assert_eq!(
+        res.json,
+        json!({
+            "code": "LEAVE_OVERLAP",
+            "message": format!("Tanggal cuti bertabrakan dengan pengajuan lain ({start} s.d. {end}, status PENDING)"),
+        })
+    );
+
     // Kuota per jenis: 3 hari; 2 PENDING sudah ada → sisa 1.
     request(
         &app,
@@ -175,7 +186,14 @@ async fn submit_with_document_quota_and_validation() {
         Some(fx.manager.id),
     )
     .await;
-    let res = send(fields(&quota_type.to_string(), &manager_s), None).await;
+    let quota_fields = vec![
+        ("leaveTypeId", quota_type.to_string()),
+        ("approverId", manager_s.clone()),
+        ("startDate", key(plus(mon, 14))),
+        ("endDate", key(plus(mon, 15))),
+        ("reason", "keluarga".to_owned()),
+    ];
+    let res = send(quota_fields, None).await;
     res.assert_status(400);
     assert_eq!(
         res.json["message"],
@@ -189,8 +207,8 @@ async fn submit_with_document_quota_and_validation() {
         .json(&json!({
             "leaveTypeId": leave_type(&app, fx.id, true, "ANNUAL", false, None).await,
             "approverId": fx.manager.id,
-            "startDate": key(mon),
-            "endDate": key(plus(mon, 25)),
+            "startDate": key(plus(mon, 21)),
+            "endDate": key(plus(mon, 46)),
             "reason": "panjang",
         }))
         .send()
@@ -732,4 +750,94 @@ async fn dashboard_reads_and_reports() {
         .send()
         .await
         .assert_status(400);
+}
+
+// 677a060: day-count lintas tahun menambah `requestableByYear`; kalender hanya memuat hari
+// kerja company (akhir pekan & libur tidak muncul).
+#[tokio::test]
+async fn day_count_by_year_and_calendar_working_days() {
+    let Some((app, _em)) = app("api_x1").await else {
+        return;
+    };
+    let _g = SERIAL.lock().await;
+    let fx = app.company().await;
+    reset(&app, &fx).await;
+    let y = this_year();
+    balance(&app, fx.id, fx.staff.id, y, 12.0, 2.0, 0.0, 0.0, 0.0).await;
+    let res = app
+        .get(&format!(
+            "/mobile/leaves/day-count?startDate={y}-12-28&endDate={}-01-08",
+            y + 1
+        ))
+        .token(&fx.staff.token)
+        .send()
+        .await;
+    res.assert_status(200);
+    let by_year = res.json["requestableByYear"].as_array().unwrap().clone();
+    assert_eq!(by_year.len(), 2);
+    assert_eq!(by_year[0]["year"], y);
+    assert_eq!(by_year[0]["requestable"], 10);
+    assert_eq!(res.json["requestable"], 10);
+    assert_eq!(by_year[1]["year"], y + 1);
+    assert_eq!(by_year[1]["requestable"], 12);
+    let sum = by_year[0]["days"].as_f64().unwrap() + by_year[1]["days"].as_f64().unwrap();
+    assert_eq!(res.json["totalDays"].as_f64(), Some(sum));
+    // Satu tahun → tanpa `requestableByYear`.
+    let mon = first_monday(y, 9);
+    let res = app
+        .get(&format!(
+            "/mobile/leaves/day-count?startDate={}&endDate={}",
+            key(mon),
+            key(plus(mon, 6))
+        ))
+        .token(&fx.staff.token)
+        .send()
+        .await;
+    res.assert_status(200);
+    assert!(res.json.get("requestableByYear").is_none());
+
+    // Kalender: Senin s.d. Minggu + libur Rabu → hanya Sen, Sel, Kam, Jum.
+    let t = leave_type(&app, fx.id, false, "ANNUAL", false, None).await;
+    request(
+        &app,
+        fx.id,
+        fx.staff.id,
+        Some(t),
+        None,
+        mon,
+        plus(mon, 6),
+        4.0,
+        "APPROVED",
+        Some(fx.manager.id),
+    )
+    .await;
+    app.exec(&format!(
+        r#"INSERT INTO "companyHoliday" ("companyId", name, date, type, "deductsLeave")
+           VALUES ({}, 'Libur uji', '{}', 'NATIONAL_HOLIDAY', false)"#,
+        fx.id,
+        key(plus(mon, 2))
+    ))
+    .await;
+    let res = app
+        .get(&format!("/leaves/calendar?year={y}&month=9"))
+        .token(&fx.manager.token)
+        .send()
+        .await;
+    res.assert_status(200);
+    let dates: Vec<String> = res.json["calendar"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["date"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        dates,
+        vec![
+            key(mon),
+            key(plus(mon, 1)),
+            key(plus(mon, 3)),
+            key(plus(mon, 4))
+        ]
+    );
+    assert_eq!(res.json["totalRequests"], 1);
 }

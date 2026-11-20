@@ -299,6 +299,25 @@ async fn sick_and_accrual_side_effects_and_policy_switch_job() {
         (sick(balances[0]).await, sick(balances[1]).await),
         (9.0, 2.0)
     );
+    // c7e3aaf: kuota diturunkan di bawah pemakaian → di-clamp ke sickLeaveUsed per baris.
+    app.exec(&format!(
+        r#"UPDATE "leaveBalance" SET "sickLeaveUsed" = 8 WHERE id = {}"#,
+        balances[0]
+    ))
+    .await;
+    put_policy(&app, &fx, json!({"sickLeaveDays": 5}))
+        .await
+        .assert_status(200);
+    assert_eq!(sick(balances[0]).await, 8.0);
+    app.exec(&format!(
+        r#"UPDATE "leaveBalance" SET "sickLeaveUsed" = 0 WHERE id = {}"#,
+        balances[0]
+    ))
+    .await;
+    put_policy(&app, &fx, json!({"sickLeaveDays": 9}))
+        .await
+        .assert_status(200);
+    assert_eq!(sick(balances[0]).await, 9.0);
 
     // UNLIMITED mengosongkan jatah; saldo tidak disentuh.
     let r = put_policy(&app, &fx, json!({"sickLeaveMode": "UNLIMITED"})).await;
@@ -314,6 +333,16 @@ async fn sick_and_accrual_side_effects_and_policy_switch_job() {
     let r = put_policy(&app, &fx, json!({"sickLeaveDays": null})).await;
     assert_eq!(r.json["sickLeaveMode"], "DEDUCT_ANNUAL");
     assert!(r.json["sickLeaveDays"].is_null());
+
+    // c7e3aaf: saldo tahun lalu (UPFRONT, sudah tutup) ditandai lengkap (12) saat beralih.
+    let past: i32 = app
+        .scalar(&format!(
+            r#"INSERT INTO "leaveBalance" ("userId", "companyId", year, "accruedThroughMonth")
+               VALUES ({e1}, {}, {}, 0) RETURNING id"#,
+            fx.id,
+            year - 1
+        ))
+        .await;
 
     // UPFRONT → MONTHLY: bulan yang sudah lewat dianggap dikreditkan (zona company = UTC).
     let month0: i32 = app
@@ -336,6 +365,12 @@ async fn sick_and_accrual_side_effects_and_policy_switch_job() {
             .await;
         assert_eq!(m, month0);
     }
+    let m: i32 = app
+        .scalar(&format!(
+            r#"SELECT "accruedThroughMonth" FROM "leaveBalance" WHERE id = {past}"#
+        ))
+        .await;
+    assert_eq!(m, 12);
     // Tidak ada job peralihan untuk UPFRONT → MONTHLY.
     let updated_ms = |r: &TestResponse| {
         mz_core::time::parse_js_date(r.json["updatedAt"].as_str().unwrap())
@@ -1038,7 +1073,21 @@ async fn balances_initialize_list_and_view_fields() {
         .send()
         .await;
     r.assert_status(400);
-    assert_eq!(messages(&r), ["year must be an integer number"]);
+    assert_eq!(
+        messages(&r),
+        [
+            "year must not be greater than 2100",
+            "year must not be less than 2020",
+            "year must be an integer number"
+        ]
+    );
+    let r = app
+        .post("/leave-policies/balances/initialize?year=2019")
+        .token(&fx.admin.token)
+        .send()
+        .await;
+    r.assert_status(400);
+    assert_eq!(messages(&r), ["year must not be less than 2020"]);
 
     // Satu karyawan: carry-over dari tahun lalu + riwayat CARRY_OVER/FORFEIT.
     let e1 = employee(&app, fx.id, &format!("Carry {}", fx.id)).await;
@@ -1281,7 +1330,7 @@ async fn balances_initialize_list_and_view_fields() {
     assert_eq!(r.json["data"][0]["entitlement"], 17);
     // Tahun tanpa saldo → kosong; validasi.
     let r = app
-        .get("/leave-policies/balances?year=2001")
+        .get("/leave-policies/balances?year=2021")
         .token(&fx.admin.token)
         .send()
         .await;
@@ -1302,6 +1351,8 @@ async fn balances_initialize_list_and_view_fields() {
             "limit must not be less than 1",
             "limit must be an integer number",
             "search must be a string",
+            "year must not be greater than 2100",
+            "year must not be less than 2020",
             "year must be an integer number"
         ]
     );
@@ -1619,4 +1670,95 @@ async fn balance_adjust_and_history() {
             .as_u16(),
         500
     );
+}
+
+// c7e3aaf: adjust total/bawaan tahun Y menghitung ulang bawaan Y+1 dan catatan hangus Y.
+#[tokio::test]
+async fn adjust_recomputes_next_year_carry_over() {
+    let Some(app) = TestApp::new(build).await else {
+        return;
+    };
+    let fx = fixture(&app).await;
+    put_policy(
+        &app,
+        &fx,
+        json!({"carryOverEnabled": true, "maxCarryOverDays": 5}),
+    )
+    .await
+    .assert_status(200);
+    let year = this_year();
+    let e = employee(&app, fx.id, &format!("Carry adj {}", fx.id)).await;
+    let cur: i32 = app
+        .scalar(&format!(
+            r#"INSERT INTO "leaveBalance" ("userId", "companyId", year, "annualLeaveTotal", "annualLeaveUsed")
+               VALUES ({e}, {}, {year}, 12, 10) RETURNING id"#,
+            fx.id
+        ))
+        .await;
+    let next: i32 = app
+        .scalar(&format!(
+            r#"INSERT INTO "leaveBalance" ("userId", "companyId", year, "annualLeaveTotal", "carryOverDays")
+               VALUES ({e}, {}, {}, 12, 2) RETURNING id"#,
+            fx.id,
+            year + 1
+        ))
+        .await;
+    let r = app
+        .patch(&format!("/leave-policies/balances/{e}/adjust"))
+        .token(&fx.admin.token)
+        .json(&json!({"field": "annualLeaveTotal", "delta": 4, "reason": "Koreksi"}))
+        .send()
+        .await;
+    r.assert_status(200);
+    assert_eq!(r.json["annualLeaveTotal"], 16);
+    // Sisa Y = 6 → bawaan Y+1 = min(6, 5) = 5; 1 hari hangus.
+    let carry: f64 = app
+        .scalar(&format!(
+            r#"SELECT "carryOverDays" FROM "leaveBalance" WHERE id = {next}"#
+        ))
+        .await;
+    assert_eq!(carry, 5.0);
+    let rows: Vec<(i32, String, f64, String, String, Option<String>)> = sqlx::query_as(
+        r#"SELECT "balanceId", field, delta, source::text, reason, "dedupeKey"
+             FROM "leaveBalanceAdjustment" WHERE "userId" = $1 AND source <> 'ADJUSTMENT' ORDER BY id"#,
+    )
+    .bind(e)
+    .fetch_all(app.db())
+    .await
+    .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            (
+                next,
+                "carryOverDays".to_owned(),
+                3.0,
+                "CARRY_OVER".to_owned(),
+                format!("Koreksi sisa cuti dibawa: saldo {year} berubah"),
+                None
+            ),
+            (
+                cur,
+                "annualLeaveTotal".to_owned(),
+                -1.0,
+                "FORFEIT".to_owned(),
+                "Sisa cuti hangus (melebihi batas bawa 5 hari)".to_owned(),
+                Some(format!("forfeit:{cur}"))
+            ),
+        ]
+    );
+
+    // sickLeaveTotal tidak menyentuh bawaan.
+    app.patch(&format!("/leave-policies/balances/{e}/adjust"))
+        .token(&fx.admin.token)
+        .json(&json!({"field": "sickLeaveTotal", "delta": 1, "reason": "x"}))
+        .send()
+        .await
+        .assert_status(200);
+    let n: i64 = app
+        .scalar(&format!(
+            r#"SELECT COUNT(*) FROM "leaveBalanceAdjustment" WHERE "userId" = {e} AND source <> 'ADJUSTMENT'"#
+        ))
+        .await;
+    assert_eq!(n, 2);
 }

@@ -245,8 +245,8 @@ impl LeavesQuery {
             status: v.enumeration(m, "status", true, &status_values()),
             leave_type_id: v.int(m, "leaveTypeId", true, None, None),
             user_id: v.int(m, "userId", true, None, None),
-            year: v.int(m, "year", true, None, None),
-            month: v.int(m, "month", true, None, None),
+            year: v.int(m, "year", true, Some(2000), Some(2100)),
+            month: v.int(m, "month", true, Some(1), Some(12)),
             page: v.int(m, "page", true, Some(1), None),
             limit: v.int(m, "limit", true, Some(1), None),
         };
@@ -265,7 +265,7 @@ pub struct CalendarQuery {
 impl CalendarQuery {
     pub fn parse(m: &Map<String, Value>) -> ApiResult<Self> {
         let mut v = V::default();
-        let year = v.int(m, "year", false, None, None);
+        let year = v.int(m, "year", false, Some(2000), Some(2100));
         let month = v.int(m, "month", false, Some(1), Some(12));
         let user_id = v.int(m, "userId", true, None, None);
         v.finish()?;
@@ -569,6 +569,7 @@ mod tests {
             )))),
             vec![
                 "status must be one of the following values: PENDING, APPROVED, REJECTED, NEEDS_REVISION",
+                "year must not be less than 2000",
                 "year must be an integer number",
                 "page must not be less than 1",
             ]
@@ -580,6 +581,8 @@ mod tests {
         assert_eq!(
             errs(CalendarQuery::parse(&query_object(None))),
             vec![
+                "year must not be greater than 2100",
+                "year must not be less than 2000",
                 "year must be an integer number",
                 "month must not be greater than 12",
                 "month must not be less than 1",

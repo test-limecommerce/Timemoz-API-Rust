@@ -1,35 +1,56 @@
-//! Persetujuan cuti (`leaves.service.ts:323-862`): `approveRequest` beserta
-//! `computeRemaining`, `deductAnnualBalance`, `deductSickBalance`, `correctLateCarryOver`.
+//! Persetujuan cuti (`leaves.service.ts:368-620`): `approveRequest` beserta
+//! `computeRemaining`, `deductAnnualBalance`, `deductSickBalance`.
 //!
 //! Urutan transaksi & kunci identik dengan Node:
-//! 1. (di luar transaksi) `getOrCreateBalance` tahun `startDate` + `company.timeZone`;
-//! 2. klaim atomik `leaveRequest` (`UPDATE … WHERE status IN (PENDING, NEEDS_REVISION)`), 0 baris → 409;
+//! 1. (di luar transaksi) visibilitas + status awal, `company.timeZone`;
+//! 2. klaim atomik `leaveRequest` (`UPDATE … WHERE status IN (PENDING, NEEDS_REVISION)`), 0 baris
+//!    → 409; baris dibaca ulang SESUDAH klaim (revisi yang mendarat lebih dulu yang disetujui);
 //! 3. hook lembur (`ot-emp:` advisory lock + batalkan lembur hari penuh);
-//! 4. `lockBalance` tahun Y (FOR UPDATE), baca policy, hitung ulang hari (libur + pola kerja);
-//! 5. potong saldo + riwayat `AUTO_DEDUCTION`; 6. koreksi bawaan Y+1 (`lockBalance` Y+1 SESUDAH Y);
-//! 7. baca ulang saldo, tulis `balanceBefore/After`. Sesudah commit: antrean kalender + email.
+//! 4. hitung ulang hari per tahun (libur + pola kerja saat ini); baris saldo tiap tahun dibuat
+//!    dulu (naik), baru dikunci naik per tahun;
+//! 5. cek tumpang tindih APPROVED di bawah kunci saldo (bebas balapan) → 400 `LEAVE_OVERLAP`;
+//! 6. per tahun: potong saldo + riwayat `AUTO_DEDUCTION`, lalu koreksi bawaan Y+1
+//!    ([`recompute_next_year_carry_over`]); 7. tulis `balanceBefore/After` (saldo tahun mulai).
+//!    Sesudah commit: antrean kalender + email.
 
 use chrono::NaiveDateTime;
 use mz_core::{ApiError, ApiResult, AppState};
 use mz_leave::balance::{
-    BalanceDelta, NewAdjustment, apply_balance_delta, find_balance, find_balance_by_id,
-    get_or_create_balance, insert_adjustment, lock_balance,
+    BalanceDelta, NewAdjustment, apply_balance_delta, find_balance_by_id, get_or_create_balance_in,
+    insert_adjustment, lock_balance,
 };
 use mz_leave::calendar::{load_holiday_index, off_day_predicate};
-use mz_leave::day_count::{count_leave_days, to_date_key};
+use mz_leave::carry_over::recompute_next_year_carry_over;
+use mz_leave::day_count::to_date_key;
 use mz_leave::enums::{LeaveBalanceChangeSource, LeaveSickMode, LeaveStatus, LeaveType};
 use mz_leave::js::num_str;
 use mz_leave::math::{
     BalanceAmounts, available, carry_available, requestable, resolve_sick_mode, split_deduction,
 };
 use mz_leave::models::{LeaveBalance, LeavePolicy};
-use mz_leave::policy::{load_policy, local_year, policy_carry_over_expired, require_time_zone};
+use mz_leave::policy::{load_policy, policy_carry_over_expired, require_time_zone};
+use mz_leave::segments::{
+    LeaveRange, OverlapCalendar, count_leave_days_by_year, find_overlapping_leave, overlap_error,
+};
 use mz_leave::view::get_scheduled_holiday_deductions;
 use sqlx::PgConnection;
 
 use crate::model::{Include, RequestRow, RequestView, Visibility, fetch_by_id, select_where};
 use crate::notify;
 use crate::util::{require_db_uuid, round};
+
+/// Status yang masih bisa diputuskan reviewer (setujui atau tolak).
+pub const REVIEWABLE_STATUSES: [LeaveStatus; 2] =
+    [LeaveStatus::PENDING, LeaveStatus::NEEDS_REVISION];
+
+/// `leaveAlreadyProcessed()`: 409 klaim status yang kalah dari keputusan bersamaan.
+pub fn leave_already_processed() -> ApiError {
+    ApiError::coded(
+        http::StatusCode::CONFLICT,
+        "LEAVE_ALREADY_PROCESSED",
+        "Pengajuan cuti sudah diproses",
+    )
+}
 
 /// Sumber saldo yang dipotong.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +186,9 @@ pub async fn deduct_annual_balance(
     Ok(())
 }
 
-/// `deductSickBalance(tx, balance, policy, totalDays, auditCtx)`.
+/// `deductSickBalance(tx, balance, policy, totalDays, auditCtx)`: hanya sakit LIMITED /
+/// UNLIMITED. Sakit DEDUCT_ANNUAL tak pernah sampai sini: persetujuan mengarahkannya ke
+/// [`deduct_annual_balance`] supaya mengikuti semua aturan cuti tahunan.
 pub async fn deduct_sick_balance(
     conn: &mut PgConnection,
     balance: &LeaveBalance,
@@ -174,31 +197,6 @@ pub async fn deduct_sick_balance(
     audit: AuditCtx,
 ) -> ApiResult<()> {
     let mode = resolve_sick_mode(policy);
-    if mode == LeaveSickMode::DEDUCT_ANNUAL {
-        // Tanpa saldo sakit khusus: potong saldo tahunan.
-        let annual_avail = balance.annual_leave_total - balance.annual_leave_used;
-        if total_days > annual_avail {
-            return Err(ApiError::bad_request(format!(
-                "Insufficient leave balance. Available: {} day(s).",
-                num_str(annual_avail)
-            )));
-        }
-        apply_balance_delta(
-            &mut *conn,
-            balance.id,
-            &BalanceDelta {
-                annual_leave_used: total_days,
-                ..BalanceDelta::default()
-            },
-        )
-        .await?;
-        insert_adjustment(
-            &mut *conn,
-            &audit.adjustment(balance, "annualLeaveUsed", total_days),
-        )
-        .await?;
-        return Ok(());
-    }
     // UNLIMITED hanya mencatat pemakaian; batas jumlah hanya berlaku untuk LIMITED.
     let sick_avail = balance.sick_leave_total - balance.sick_leave_used;
     if mode == LeaveSickMode::LIMITED && total_days > sick_avail {
@@ -224,68 +222,6 @@ pub async fn deduct_sick_balance(
     Ok(())
 }
 
-/// `correctLateCarryOver(tx, ctx)`: pengajuan tahun lalu yang disetujui sesudah pergantian
-/// tahun menurunkan sisa tahun Y, sehingga bawaan Y+1 bisa melebihi batas. Urutan kunci:
-/// Y (sudah dipegang pemanggil) lalu Y+1.
-#[allow(clippy::too_many_arguments)]
-pub async fn correct_late_carry_over(
-    conn: &mut PgConnection,
-    balance_id: i32,
-    user_id: i32,
-    company_id: i32,
-    year: i32,
-    policy: Option<&LeavePolicy>,
-    time_zone: &str,
-    request_id: i32,
-    now: NaiveDateTime,
-) -> ApiResult<()> {
-    if year >= local_year(now, time_zone) {
-        return Ok(());
-    }
-    let Some(next) = find_balance(&mut *conn, user_id, company_id, year + 1).await? else {
-        return Ok(());
-    };
-    let next_balance = lock_balance(&mut *conn, next.id).await?;
-    let prev = find_balance_by_id(&mut *conn, balance_id)
-        .await?
-        .ok_or(sqlx::Error::RowNotFound)?;
-
-    let unused = (prev.annual_leave_total - prev.annual_leave_used).max(0.0);
-    let allowed = match policy {
-        Some(p) if p.carry_over_enabled => {
-            unused.min(p.max_carry_over_days.map_or(f64::INFINITY, f64::from))
-        }
-        _ => 0.0,
-    };
-    // Jangan mengambil kembali hari bawaan yang sudah terpakai.
-    let target = allowed.max(next_balance.carry_over_used);
-    let reduce = round(next_balance.carry_over_days - target);
-    if reduce <= 0.0 {
-        return Ok(());
-    }
-    apply_balance_delta(
-        &mut *conn,
-        next_balance.id,
-        &BalanceDelta {
-            carry_over_days: -reduce,
-            ..BalanceDelta::default()
-        },
-    )
-    .await?;
-    insert_adjustment(
-        &mut *conn,
-        &NewAdjustment::system(
-            &next_balance,
-            "carryOverDays",
-            -reduce,
-            format!("Koreksi sisa cuti dibawa: pengajuan #{request_id} tahun {year} disetujui"),
-            LeaveBalanceChangeSource::CARRY_OVER,
-        ),
-    )
-    .await?;
-    Ok(())
-}
-
 /// Pengajuan yang terlihat oleh reviewer (`findFirst({ uuid, companyId, ...visibility })`).
 pub async fn find_visible(
     state: &AppState,
@@ -306,6 +242,7 @@ pub async fn find_visible(
 }
 
 /// `approveRequest(reviewerId, uuid, dto)`.
+#[allow(clippy::too_many_lines)]
 pub async fn approve_request(
     state: &AppState,
     reviewer_id: i32,
@@ -313,6 +250,8 @@ pub async fn approve_request(
     uuid: &str,
     approval_note: Option<String>,
 ) -> ApiResult<RequestView> {
+    // Visibilitas & 400 awal saja; semua angka di bawah berasal dari baris yang dibaca ulang di
+    // dalam transaksi sesudah klaim.
     let request = find_visible(state, reviewer_id, company_id, uuid)
         .await?
         .ok_or_else(|| ApiError::not_found("Leave request not found"))?;
@@ -323,12 +262,6 @@ pub async fn approve_request(
             "Only pending or needs-revision requests can be approved",
         ));
     }
-
-    // Baris saldo harus ada sebelum transaksi supaya bisa dikunci di dalamnya.
-    let start_key = to_date_key(request.start_date);
-    let end_key = to_date_key(request.end_date);
-    let year = chrono::Datelike::year(&request.start_date);
-    let ensured = get_or_create_balance(&state.db, request.user_id, company_id, year).await?;
     // timeZone tersimpan dipakai apa adanya ('UTC' pilihan sah, tanpa fallback Asia/Jakarta).
     let time_zone = require_time_zone(&state.db, company_id).await?;
 
@@ -348,51 +281,53 @@ pub async fn approve_request(
     .await?
     .rows_affected();
     if claimed == 0 {
-        return Err(ApiError::coded(
-            http::StatusCode::CONFLICT,
-            "LEAVE_ALREADY_PROCESSED",
-            "Pengajuan cuti sudah diproses",
-        ));
+        return Err(leave_already_processed());
     }
+
+    // Baca ulang sesudah klaim: revisi yang mendarat sebelumnya (tanggal, jenis hari, jenis
+    // cuti baru) yang disetujui. Kunci baris dari klaim dipegang sampai commit, dan revisi hanya
+    // menulis baris NEEDS_REVISION, jadi baris tak bisa berubah lagi dari sini.
+    let current = fetch_by_id(&mut *tx, request.id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?;
+    let start_key = to_date_key(current.start_date);
+    let end_key = to_date_key(current.end_date);
 
     // FR-012 (T4): cuti sehari penuh membatalkan lembur yang belum selesai, satu transaksi.
     mz_leave::cancel_overtime_for_leave(
         &mut tx,
         company_id,
-        request.user_id,
-        request.start_date,
-        request.end_date,
-        request.start_day_type(),
-        request.end_day_type(),
+        current.user_id,
+        current.start_date,
+        current.end_date,
+        current.start_day_type(),
+        current.end_day_type(),
         now,
     )
     .await?;
 
-    // Putuskan dari baris terkunci yang dibaca ulang, bukan snapshot sebelum transaksi.
-    let balance = lock_balance(&mut tx, ensured.id).await?;
-    let policy = load_policy(&mut *tx, company_id).await?;
-
     // Hitung ulang dengan hari libur & pola kerja saat ini (bisa berubah sejak diajukan).
     let holidays =
-        load_holiday_index(&mut tx, company_id, request.start_date, request.end_date).await?;
+        load_holiday_index(&mut tx, company_id, current.start_date, current.end_date).await?;
     let off = off_day_predicate(
         &mut tx,
         company_id,
-        request.start_date,
-        request.end_date,
+        current.start_date,
+        current.end_date,
         now,
     )
     .await?;
     let is_off = |d| off.is_off(d);
-    let total_days = count_leave_days(
+    // Cuti yang melintasi 31 Des / 1 Jan dibebankan ke saldo tiap tahun.
+    let (count, segments) = count_leave_days_by_year(
         &start_key,
         &end_key,
-        request.start_day_type(),
-        request.end_day_type(),
+        current.start_day_type(),
+        current.end_day_type(),
         &holidays.excluded_dates,
         Some(&is_off),
-    )?
-    .total_days;
+    )?;
+    let total_days = count.total_days;
     if total_days == 0.0 {
         return Err(ApiError::coded(
             http::StatusCode::BAD_REQUEST,
@@ -401,87 +336,138 @@ pub async fn approve_request(
         ));
     }
 
-    let config = request.leave_type_config();
-    let source = match &config {
-        Some(cfg) if cfg.balance_source == "SICK" => Source::Sick,
-        Some(_) => Source::Annual,
-        None if request.legacy_type() == Some(LeaveType::SICK_LEAVE) => Source::Sick,
-        None => Source::Annual,
-    };
-    // Dihitung sesudah lockBalance, di dalam transaksi yang sama.
-    let scheduled = if source == Source::Annual {
-        get_scheduled_holiday_deductions(
-            &mut tx,
-            request.user_id,
-            company_id,
-            year,
-            &time_zone,
-            now,
-        )
-        .await?
-        .len()
-    } else {
-        0
-    };
-    #[allow(clippy::cast_precision_loss)]
-    let scheduled_f = scheduled as f64;
+    // Urutan kunci harus sama dengan getOrCreateBalance(Y+1), yang mengambil advisory lock lalu
+    // membutuhkan baris Y: pastikan SEMUA baris tahun ada (naik) sebelum kunci baris mana pun,
+    // lalu kunci naik. Mengunci Y sebelum membuat Y+1 bisa deadlock (40P01).
+    let mut balance_ids = Vec::with_capacity(segments.len());
+    for seg in &segments {
+        let ensured =
+            get_or_create_balance_in(&mut tx, current.user_id, company_id, seg.year).await?;
+        balance_ids.push(ensured.id);
+    }
+    for id in &balance_ids {
+        lock_balance(&mut tx, *id).await?;
+    }
+
+    // Cek tumpang tindih bebas balapan: persetujuan lain atas cuti yang bertumpuk berbagi
+    // minimal satu baris saldo yang dikunci di atas, jadi sudah commit (terlihat di sini) atau
+    // menunggu transaksi ini.
+    let clash = find_overlapping_leave(
+        &mut *tx,
+        company_id,
+        current.user_id,
+        Some(current.id),
+        &[LeaveStatus::APPROVED],
+        &LeaveRange {
+            start: current.start_date,
+            end: current.end_date,
+            start_day_type: current.start_day_type(),
+            end_day_type: current.end_day_type(),
+        },
+        Some(OverlapCalendar {
+            excluded_dates: &holidays.excluded_dates,
+            is_weekly_off: &is_off,
+        }),
+    )
+    .await?;
+    if let Some(hit) = clash {
+        return Err(overlap_error(&hit));
+    }
+
+    let policy = load_policy(&mut *tx, company_id).await?;
     let policy_ref = policy.as_ref();
-    let balance_before = compute_remaining(&balance, source, policy_ref, year, &time_zone, now)
-        .map(|r| requestable(r, scheduled_f));
+
+    // Sumber saldo yang dipotong, supaya snapshot sebelum/sesudah mencerminkan saldo itu.
+    let config = current.leave_type_config();
+    let is_sick_source = match &config {
+        Some(cfg) => cfg.balance_source == "SICK",
+        None => current.legacy_type() == Some(LeaveType::SICK_LEAVE),
+    };
+    let source = if is_sick_source {
+        Source::Sick
+    } else {
+        Source::Annual
+    };
+    let deducts = match &config {
+        Some(cfg) => cfg.deduct_balance,
+        None => matches!(
+            current.legacy_type(),
+            Some(LeaveType::ANNUAL_LEAVE | LeaveType::SICK_LEAVE)
+        ),
+    };
+    // Sakit DEDUCT_ANNUAL memakai saldo tahunan, jadi mengikuti semua aturan tahunan: bawaan
+    // dulu, hari yang dicadangkan untuk cuti bersama, koreksi bawaan.
+    let draws_annual =
+        !is_sick_source || resolve_sick_mode(policy_ref) == LeaveSickMode::DEDUCT_ANNUAL;
 
     let audit = AuditCtx {
         reviewer_id,
-        leave_request_id: request.id,
+        leave_request_id: current.id,
     };
-    let deduct = match &config {
-        // Sistem baru: konfigurasi companyLeaveType.
-        Some(cfg) if cfg.deduct_balance => Some(if cfg.balance_source == "SICK" {
-            Source::Sick
-        } else {
-            Source::Annual
-        }),
-        Some(_) => None,
-        // Lama: enum LeaveType; jenis lain tidak memotong saldo.
-        None => match request.legacy_type() {
-            Some(LeaveType::ANNUAL_LEAVE) => Some(Source::Annual),
-            Some(LeaveType::SICK_LEAVE) => Some(Source::Sick),
-            _ => None,
-        },
-    };
-    match deduct {
-        Some(Source::Annual) => {
-            deduct_annual_balance(
-                &mut tx, &balance, policy_ref, total_days, year, &time_zone, audit, scheduled, now,
+    let mut balance_before = None;
+    let mut balance_after = None;
+
+    for (i, (seg, balance_id)) in segments.iter().zip(&balance_ids).enumerate() {
+        // Baca baru di bawah kunci: koreksi bawaan tahun sebelumnya bisa mengubah baris ini.
+        let balance = find_balance_by_id(&mut *tx, *balance_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?;
+        // Dihitung sesudah lockBalance, di dalam transaksi yang sama.
+        let scheduled = if draws_annual {
+            get_scheduled_holiday_deductions(
+                &mut tx,
+                current.user_id,
+                company_id,
+                seg.year,
+                &time_zone,
+                now,
             )
-            .await?;
-        }
-        Some(Source::Sick) => {
-            deduct_sick_balance(&mut tx, &balance, policy_ref, total_days, audit).await?;
-        }
-        None => {}
-    }
+            .await?
+            .len()
+        } else {
+            0
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let scheduled_f = scheduled as f64;
+        let remaining_before =
+            compute_remaining(&balance, source, policy_ref, seg.year, &time_zone, now);
 
-    if source == Source::Annual {
-        correct_late_carry_over(
-            &mut tx,
-            balance.id,
-            request.user_id,
-            company_id,
-            year,
-            policy_ref,
-            &time_zone,
-            request.id,
-            now,
-        )
-        .await?;
-    }
+        if deducts && seg.days > 0.0 {
+            if draws_annual {
+                deduct_annual_balance(
+                    &mut tx, &balance, policy_ref, seg.days, seg.year, &time_zone, audit,
+                    scheduled, now,
+                )
+                .await?;
+                recompute_next_year_carry_over(
+                    &mut tx,
+                    company_id,
+                    current.user_id,
+                    seg.year,
+                    &time_zone,
+                    Some(format!(
+                        "Koreksi sisa cuti dibawa: pengajuan #{} tahun {} disetujui",
+                        current.id, seg.year
+                    )),
+                    now,
+                )
+                .await?;
+            } else {
+                deduct_sick_balance(&mut tx, &balance, policy_ref, seg.days, audit).await?;
+            }
+        }
 
-    let updated_balance = find_balance_by_id(&mut *tx, balance.id).await?;
-    let balance_after = match updated_balance {
-        Some(b) => compute_remaining(&b, source, policy_ref, year, &time_zone, now)
-            .map(|r| requestable(r, scheduled_f)),
-        None => balance_before,
-    };
+        // balanceBefore/After menggambarkan saldo tahun mulai, seperti sebelum pemecahan.
+        if i == 0 {
+            balance_before = remaining_before.map(|r| requestable(r, scheduled_f));
+            let after = find_balance_by_id(&mut *tx, *balance_id)
+                .await?
+                .ok_or(sqlx::Error::RowNotFound)?;
+            balance_after =
+                compute_remaining(&after, source, policy_ref, seg.year, &time_zone, now)
+                    .map(|r| requestable(r, scheduled_f));
+        }
+    }
 
     sqlx::query(
         r#"UPDATE "leaveRequest"
@@ -489,7 +475,7 @@ pub async fn approve_request(
                   "totalDays" = $3, "balanceBefore" = $4, "balanceAfter" = $5, "updatedAt" = $6
             WHERE id = $1"#,
     )
-    .bind(request.id)
+    .bind(current.id)
     .bind(approval_note.as_deref())
     .bind(total_days)
     .bind(balance_before)
@@ -497,7 +483,7 @@ pub async fn approve_request(
     .bind(mz_core::time::now_naive())
     .execute(&mut *tx)
     .await?;
-    let updated = fetch_by_id(&mut *tx, request.id)
+    let updated = fetch_by_id(&mut *tx, current.id)
         .await?
         .ok_or(sqlx::Error::RowNotFound)?;
     tx.commit().await?;

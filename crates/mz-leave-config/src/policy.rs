@@ -246,20 +246,24 @@ pub async fn upsert_policy(
     )
     .await?;
 
-    // Jatah cuti sakit baru berlaku untuk saldo tahun berjalan (baris yang pernah di-adjust
-    // manual tidak ditimpa).
-    if sick_touched
-        && sick_mode == LeaveSickMode::LIMITED
-        && (previous_sick_mode != LeaveSickMode::LIMITED
-            || current.as_ref().and_then(|c| c.sick_leave_days) != sick_days)
-    {
-        propagate_sick_total(&mut tx, company_id, sick_days.unwrap_or(0), now).await?;
-    }
-
-    // UPFRONT → MONTHLY: bulan yang sudah lewat dianggap sudah dikreditkan (research R4).
+    // UPFRONT → MONTHLY: bulan yang sudah lewat dianggap sudah dikreditkan, total tidak
+    // disentuh (research R4). Urutan kunci baris saldo naik per tahun (tahun lalu → tahun
+    // berjalan), sama dengan approve/akrual/koreksi bawaan; karena itu blok ini mendahului
+    // propagasi kuota sakit yang mengunci baris tahun berjalan.
     if previous_mode == LeaveAccrualMode::UPFRONT && merged_mode == LeaveAccrualMode::MONTHLY {
         let tz = require_time_zone(&mut *tx, company_id).await?;
         let local = local_now(now, &tz);
+        // Tahun lalu dijalani dengan UPFRONT dan sudah tutup: tandai lengkap supaya catch-up
+        // akrual Y-1 tidak mengkreditkan bulan-bulannya lagi (mis. pro-rata Jul–Des).
+        sqlx::query(
+            r#"UPDATE "leaveBalance" SET "accruedThroughMonth" = 12, "updatedAt" = $3
+               WHERE "companyId" = $1 AND year < $2 AND "accruedThroughMonth" < 12"#,
+        )
+        .bind(company_id)
+        .bind(local.year())
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query(
             r#"UPDATE "leaveBalance" SET "accruedThroughMonth" = $3, "updatedAt" = $4
                WHERE "companyId" = $1 AND year = $2"#,
@@ -270,6 +274,16 @@ pub async fn upsert_policy(
         .bind(now)
         .execute(&mut *tx)
         .await?;
+    }
+
+    // Jatah cuti sakit baru berlaku untuk saldo tahun berjalan (baris yang pernah di-adjust
+    // manual tidak ditimpa).
+    if sick_touched
+        && sick_mode == LeaveSickMode::LIMITED
+        && (previous_sick_mode != LeaveSickMode::LIMITED
+            || current.as_ref().and_then(|c| c.sick_leave_days) != sick_days)
+    {
+        propagate_sick_total(&mut tx, company_id, sick_days.unwrap_or(0), now).await?;
     }
 
     if let Some(ids) = &input.approver_ids {

@@ -10,6 +10,7 @@
 pub mod balance;
 pub mod calendar;
 pub mod calendar_sync;
+pub mod carry_over;
 pub mod day_count;
 pub mod enums;
 pub mod holiday_deduction;
@@ -20,7 +21,9 @@ pub mod math;
 pub mod models;
 pub mod policy;
 pub mod schedule;
+pub mod segments;
 pub mod view;
+pub mod window;
 pub mod worker;
 
 use chrono::{NaiveDate, NaiveDateTime};

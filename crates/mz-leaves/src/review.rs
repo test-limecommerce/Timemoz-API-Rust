@@ -4,11 +4,12 @@
 use chrono::{Datelike, NaiveDate};
 use mz_core::{ApiError, ApiResult, AppState};
 use mz_leave::enums::LeaveStatus;
+use mz_leave::window::{bucket_leaves_by_date, load_calendar_ctx, month_range};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::{Postgres, QueryBuilder};
 
-use crate::approve::find_visible;
+use crate::approve::{REVIEWABLE_STATUSES, find_visible, leave_already_processed};
 use crate::dto::{CalendarQuery, LeavesQuery};
 use crate::model::{Include, RequestRow, RequestView, Visibility, fetch_by_id, select_where};
 use crate::notify;
@@ -228,19 +229,35 @@ pub async fn reject_request(
             "Cannot reject an already approved request",
         ));
     }
+    // REJECTED termasuk "Cancelled by employee": menolak ulang akan menimpanya.
+    if !REVIEWABLE_STATUSES
+        .iter()
+        .any(|s| s.as_str() == request.status)
+    {
+        return Err(ApiError::bad_request(
+            "Only pending or needs-revision requests can be rejected",
+        ));
+    }
+    // Klaim berdasar status, seperti approve: approve bersamaan (yang sudah memotong saldo)
+    // atau pembatalan menang, dan yang ini mendapat 409 alih-alih menimpanya.
     let now = mz_core::time::now_naive();
-    sqlx::query(
+    let claimed = sqlx::query(
         r#"UPDATE "leaveRequest"
               SET status = 'REJECTED'::"LeaveStatus", "rejectionReason" = $2, "reviewedById" = $3,
                   "reviewedAt" = $4, "updatedAt" = $4
-            WHERE id = $1"#,
+            WHERE id = $1
+              AND status IN ('PENDING'::"LeaveStatus", 'NEEDS_REVISION'::"LeaveStatus")"#,
     )
     .bind(request.id)
     .bind(&rejection_reason)
     .bind(reviewer_id)
     .bind(now)
     .execute(&state.db)
-    .await?;
+    .await?
+    .rows_affected();
+    if claimed == 0 {
+        return Err(leave_already_processed());
+    }
     let rejected = fetch_by_id(&state.db, request.id)
         .await?
         .ok_or(sqlx::Error::RowNotFound)?;
@@ -271,19 +288,25 @@ pub async fn request_revision(
             "Only pending requests can be marked as needs revision",
         ));
     }
+    // Klaim berdasar status: approve yang menang tetap APPROVED (beserta potongannya) alih-alih
+    // dibuka lagi untuk diajukan ulang dan dipotong dua kali.
     let now = mz_core::time::now_naive();
-    sqlx::query(
+    let claimed = sqlx::query(
         r#"UPDATE "leaveRequest"
               SET status = 'NEEDS_REVISION'::"LeaveStatus", "revisionNote" = $2, "reviewedById" = $3,
                   "reviewedAt" = $4, "updatedAt" = $4
-            WHERE id = $1"#,
+            WHERE id = $1 AND status = 'PENDING'::"LeaveStatus""#,
     )
     .bind(request.id)
     .bind(revision_note.as_deref())
     .bind(reviewer_id)
     .bind(now)
     .execute(&state.db)
-    .await?;
+    .await?
+    .rows_affected();
+    if claimed == 0 {
+        return Err(leave_already_processed());
+    }
     let updated = fetch_by_id(&state.db, request.id)
         .await?
         .ok_or(sqlx::Error::RowNotFound)?;
@@ -312,8 +335,11 @@ pub async fn get_calendar(
     company_id: i32,
     q: &CalendarQuery,
 ) -> ApiResult<Value> {
-    let month_start = js_local_date(q.year, q.month - 1, 1).ok_or_else(invalid_date)?;
-    let month_end = js_local_date(q.year, q.month, 0).ok_or_else(invalid_date)?;
+    let (month_start, month_end) = i32::try_from(q.year)
+        .ok()
+        .zip(u32::try_from(q.month).ok())
+        .and_then(|(y, m)| month_range(y, m))
+        .ok_or_else(invalid_date)?;
     let vis = Visibility::load(&state.db, reviewer_id, company_id).await?;
 
     let mut qb = select_where();
@@ -328,20 +354,28 @@ pub async fn get_calendar(
     qb.push(r#" ORDER BY lr."startDate" ASC, u.name ASC, lr.id ASC"#);
     let requests: Vec<RequestRow> = qb.build_query_as().fetch_all(&state.db).await?;
 
-    let mut calendar = Vec::new();
-    for date in month_start.iter_days().take_while(|d| *d <= month_end) {
-        let leaves: Vec<RequestView> = requests
-            .iter()
-            .filter(|r| date >= r.start_date && date <= r.end_date)
-            .map(|r| r.view(Include::USER_TYPE))
-            .collect();
-        if !leaves.is_empty() {
-            calendar.push(CalendarDay {
-                date: mz_leave::day_count::to_date_key(date),
-                leaves,
-            });
-        }
-    }
+    // Hanya hari kerja (bukan libur mingguan, bukan hari libur) yang diisi, aturan sama dengan
+    // saldo: tak ada bentrok palsu di akhir pekan.
+    let mut conn = state.db.acquire().await?;
+    let ctx = load_calendar_ctx(
+        &mut conn,
+        company_id,
+        month_start,
+        month_end,
+        mz_core::time::now_naive(),
+    )
+    .await?;
+    drop(conn);
+    let calendar: Vec<CalendarDay> =
+        bucket_leaves_by_date(&requests, month_start, month_end, &ctx, |r| {
+            (r.start_date, r.end_date)
+        })
+        .into_iter()
+        .map(|(date, leaves)| CalendarDay {
+            date: mz_leave::day_count::to_date_key(date),
+            leaves: leaves.iter().map(|r| r.view(Include::USER_TYPE)).collect(),
+        })
+        .collect();
     serde_json::to_value(CalendarOut {
         year: q.year,
         month: q.month,

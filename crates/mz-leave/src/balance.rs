@@ -272,7 +272,7 @@ async fn join_month_in_year(
 }
 
 /// Teks alasan hangus (`FORFEIT`).
-fn forfeit_reason(carry_over_enabled: bool, max_carry_over_days: Option<i32>) -> String {
+pub(crate) fn forfeit_reason(carry_over_enabled: bool, max_carry_over_days: Option<i32>) -> String {
     if carry_over_enabled {
         let cap = max_carry_over_days.map_or_else(|| "tanpa batas".to_owned(), |d| d.to_string());
         format!("Sisa cuti hangus (melebihi batas bawa {cap} hari)")

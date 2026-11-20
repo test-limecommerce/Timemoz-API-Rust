@@ -576,7 +576,7 @@ impl AdjustLeaveBalanceDto {
     }
 }
 
-/// `YearQueryDto`: `@IsInt @IsOptional @Type(() => Number) year`.
+/// `YearQueryDto`: `@IsInt @Min(2020) @Max(2100) @IsOptional @Type(() => Number) year`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct YearQuery {
@@ -592,8 +592,8 @@ impl Validate for YearQuery {
             "year",
             &Num::of(self.year.as_ref()),
             true,
-            None,
-            None,
+            Some(2020.0),
+            Some(2100.0),
         );
         e
     }
@@ -653,8 +653,8 @@ impl Validate for BalancesQuery {
             "year",
             &Num::of(self.year.as_ref()),
             true,
-            None,
-            None,
+            Some(2020.0),
+            Some(2100.0),
         );
         e
     }
@@ -872,6 +872,8 @@ mod tests {
                 "page must not be less than 1",
                 "limit must not be less than 1",
                 "limit must be an integer number",
+                "year must not be greater than 2100",
+                "year must not be less than 2020",
                 "year must be an integer number",
             ]
         );

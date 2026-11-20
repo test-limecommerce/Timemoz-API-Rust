@@ -1,5 +1,5 @@
 //! Jadwal saldo cuti per company:
-//! - `LeaveAccrualService.catchUp` (`leave-schedule/leave-accrual.service.ts`)
+//! - `LeaveAccrualService.catchUp` / `catchUpPreviousYear` (`leave-schedule/leave-accrual.service.ts`)
 //! - `LeaveYearService.ensureYearOpen` / `expireCarryOver` (`leave-year.service.ts`)
 //! - `LeavePolicySwitchService.topUpToUpfront` (`leave-policy-switch.service.ts`)
 //!
@@ -16,9 +16,11 @@ use mz_overtime::zone::ms_of;
 use sqlx::{PgConnection, PgPool};
 
 use crate::balance::{NewAdjustment, get_or_create_balance, insert_adjustment, lock_balance};
+use crate::carry_over::recompute_next_year_carry_over;
 use crate::enums::{LeaveAccrualMode, LeaveBalanceChangeSource, LeaveResetType};
 use crate::js::round2;
 use crate::math::{accrual_credit, pro_rata_entitlement, resolve_annual_entitlement};
+use crate::models::LeavePolicy;
 use crate::policy::{
     company_time_zone, is_carry_over_expired, load_entitlement_inputs, load_policy,
     local_day_start, local_now, local_year,
@@ -83,39 +85,91 @@ fn earliest_by_user(rows: &[(i32, NaiveDateTime)]) -> Vec<(i32, NaiveDateTime)> 
 
 // ── Akrual bulanan ───────────────────────────────────────────────────────────
 
-/// `catchUp(companyId, timeZone, now)`: bulan M dikreditkan pada tick pertama saat tanggal
-/// lokal company sudah di bulan M+1 atau sesudahnya. Mengembalikan jumlah kredit (> 0).
+/// `catchUp(companyId, timeZone, now)`: tahun lalu (sampai bulan 12) lalu tahun berjalan.
+/// Bulan M dikreditkan pada tick pertama saat tanggal lokal company sudah di bulan M+1 atau
+/// sesudahnya. Mengembalikan jumlah kredit (> 0).
+///
+/// Tahun lalu (Y-1) ikut dikejar sampai bulan 12: Desember baru jatuh tempo di Januari, dan
+/// bulan yang terlewat karena job mati tetap masuk. Hanya baris Y-1 yang memang berakrual
+/// bulanan (`accruedThroughMonth >= 1`) yang dikejar. Setiap kredit menghitung ulang bawaan ke
+/// tahun berikutnya di transaksi yang sama.
 pub async fn accrual_catch_up(
     pool: &PgPool,
     company_id: i32,
     time_zone: &str,
     now: NaiveDateTime,
 ) -> sqlx::Result<u32> {
-    let policy = load_policy(pool, company_id).await?;
-    let Some(policy) = policy.filter(|p| p.accrual_mode == LeaveAccrualMode::MONTHLY) else {
+    let Some(policy) = monthly_policy(pool, company_id).await? else {
         return Ok(0);
     };
     let local = local_now(now, time_zone);
-    let local_year = local.year();
-    let last_due_month = i32::try_from(local.month()).unwrap_or(1) - 1;
+    let year = local.year();
+    let previous = catch_up_year(pool, company_id, time_zone, &policy, year - 1, 12, now).await?;
+    // Bulan lokal M+1 berarti bulan M sudah selesai; Januari: belum ada yang jatuh tempo.
+    let last_due = i32::try_from(local.month0()).unwrap_or(0);
+    let current = catch_up_year(pool, company_id, time_zone, &policy, year, last_due, now).await?;
+    Ok(previous + current)
+}
+
+/// `catchUpPreviousYear(companyId, timeZone, now)`: hanya Y-1 (sampai bulan 12). Tick
+/// memanggilnya SEBELUM [`ensure_year_open`], supaya saldo Y yang baru dibuka langsung
+/// menghitung bawaan dari Y-1 yang sudah lengkap.
+pub async fn accrual_catch_up_previous_year(
+    pool: &PgPool,
+    company_id: i32,
+    time_zone: &str,
+    now: NaiveDateTime,
+) -> sqlx::Result<u32> {
+    let Some(policy) = monthly_policy(pool, company_id).await? else {
+        return Ok(0);
+    };
+    let year = local_year(now, time_zone) - 1;
+    catch_up_year(pool, company_id, time_zone, &policy, year, 12, now).await
+}
+
+async fn monthly_policy(pool: &PgPool, company_id: i32) -> sqlx::Result<Option<LeavePolicy>> {
+    Ok(load_policy(pool, company_id)
+        .await?
+        .filter(|p| p.accrual_mode == LeaveAccrualMode::MONTHLY))
+}
+
+/// `catchUpYear(...)`: mengkreditkan bulan `accruedThroughMonth + 1 ..= last_due_month` saldo
+/// tahun `year`.
+async fn catch_up_year(
+    pool: &PgPool,
+    company_id: i32,
+    time_zone: &str,
+    policy: &LeavePolicy,
+    year: i32,
+    last_due_month: i32,
+    now: NaiveDateTime,
+) -> sqlx::Result<u32> {
     if last_due_month < 1 {
         return Ok(0);
     }
+    let is_past_year = year < local_year(now, time_zone);
 
+    // Tahun lalu: hanya baris yang sudah berakrual bulanan di tahun itu. Baris yang dibuat saat
+    // UPFRONT tetap 0, jadi tanpa syarat ini peralihan ke MONTHLY akan mengkreditkan ulang bulan
+    // yang jatahnya sudah diberikan di muka.
     let balances: Vec<(i32, i32, i32)> = sqlx::query_as(
         r#"SELECT id, "userId", "accruedThroughMonth" FROM "leaveBalance"
            WHERE "companyId" = $1 AND year = $2 AND "accruedThroughMonth" < $3
+             AND (NOT $4 OR "accruedThroughMonth" >= 1)
            ORDER BY id"#,
     )
     .bind(company_id)
-    .bind(local_year)
+    .bind(year)
     .bind(last_due_month)
+    .bind(is_past_year)
     .fetch_all(pool)
     .await?;
     if balances.is_empty() {
         return Ok(0);
     }
 
+    // Dimuat sekali per panggilan. Tier/override tak punya riwayat per tahun, jadi Y-1 memakai
+    // penetapan saat ini, sama seperti kredit bulan tahun berjalan.
     let user_ids: Vec<i32> = balances.iter().map(|b| b.1).collect();
     let mut conn = pool.acquire().await?;
     let inputs = load_entitlement_inputs(&mut conn, company_id, &user_ids).await?;
@@ -130,7 +184,7 @@ pub async fn accrual_catch_up(
     for (balance_id, user_id, accrued) in balances {
         let joined_at = joined_by_user.get(&user_id).copied();
         let entitlement = resolve_annual_entitlement(
-            Some(&policy),
+            Some(policy),
             inputs.override_of(user_id),
             inputs.tier_days_of(user_id),
         );
@@ -139,11 +193,12 @@ pub async fn accrual_catch_up(
             let res = accrue_month(
                 pool,
                 balance_id,
-                (local_year, month),
+                (year, month),
                 time_zone,
                 joined_at,
                 monthly,
                 entitlement,
+                now,
             )
             .await;
             match res {
@@ -163,6 +218,7 @@ pub async fn accrual_catch_up(
     Ok(credited)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn accrue_month(
     pool: &PgPool,
     balance_id: i32,
@@ -171,13 +227,15 @@ async fn accrue_month(
     joined_at: Option<NaiveDateTime>,
     monthly: f64,
     entitlement: f64,
+    now: NaiveDateTime,
 ) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
     let row = lock_balance(&mut tx, balance_id).await?;
     if i64::from(row.accrued_through_month) != i64::from(month) - 1 {
         return Ok(false);
     }
-    // monthEnd = akhir bulan lokal; layak bila bergabung ≤ monthEnd (< awal bulan berikutnya).
+    // monthEnd = akhir bulan M tahun saldo ini (bukan tahun berjalan); layak bila bergabung
+    // ≤ monthEnd (< awal bulan berikutnya).
     let next_month_start = if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1)
     } else {
@@ -205,25 +263,39 @@ async fn accrue_month(
     .bind(now_naive())
     .execute(&mut *tx)
     .await?;
-    let done = credit > 0.0;
-    if done {
-        insert_adjustment(
-            &mut tx,
-            &NewAdjustment {
-                dedupe_key: Some(format!("accrual:{balance_id}:{}", month_key(year, month))),
-                ..NewAdjustment::system(
-                    &row,
-                    "annualLeaveTotal",
-                    credit,
-                    format!("Akrual bulanan — {}", month_label_id(year, month)),
-                    LeaveBalanceChangeSource::MONTHLY_ACCRUAL,
-                )
-            },
-        )
-        .await?;
+    if credit <= 0.0 {
+        tx.commit().await?;
+        return Ok(false);
     }
+    let label = month_label_id(year, month);
+    insert_adjustment(
+        &mut tx,
+        &NewAdjustment {
+            dedupe_key: Some(format!("accrual:{balance_id}:{}", month_key(year, month))),
+            ..NewAdjustment::system(
+                &row,
+                "annualLeaveTotal",
+                credit,
+                format!("Akrual bulanan — {label}"),
+                LeaveBalanceChangeSource::MONTHLY_ACCRUAL,
+            )
+        },
+    )
+    .await?;
+    // Kunci Y (sudah dipegang) lalu Y+1: urutan tahun naik. None bila Y+1 belum ada; berlaku
+    // juga untuk tahun berjalan (Y+1 bisa dibuat lebih awal oleh cuti Januari).
+    recompute_next_year_carry_over(
+        &mut tx,
+        row.company_id,
+        row.user_id,
+        year,
+        time_zone,
+        Some(format!("Koreksi sisa cuti dibawa: akrual {label}")),
+        now,
+    )
+    .await?;
     tx.commit().await?;
-    Ok(done)
+    Ok(true)
 }
 
 /// `advanceTo(balanceId, month)`: memajukan penanda tanpa memundurkannya.
@@ -426,7 +498,17 @@ pub async fn top_up_to_upfront(
                 entitlement = pro_rata_entitlement(entitlement, joined.month0());
             }
         }
-        match top_up_one(pool, balance_id, entitlement, policy_updated_at_ms).await {
+        match top_up_one(
+            pool,
+            balance_id,
+            entitlement,
+            policy_updated_at_ms,
+            year,
+            &time_zone,
+            now,
+        )
+        .await
+        {
             Ok(true) => topped_up += 1,
             Ok(false) => {}
             Err(e) if is_unique_violation(&e) => {}
@@ -441,6 +523,9 @@ async fn top_up_one(
     balance_id: i32,
     entitlement: f64,
     policy_updated_at_ms: i64,
+    year: i32,
+    time_zone: &str,
+    now: NaiveDateTime,
 ) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
     let row = lock_balance(&mut tx, balance_id).await?;
@@ -469,6 +554,20 @@ async fn top_up_one(
                 LeaveBalanceChangeSource::MONTHLY_ACCRUAL,
             )
         },
+    )
+    .await?;
+    // Saldo Y+1 bisa sudah dibuat lebih awal (mis. cuti Januari disetujui di Desember); bawaannya
+    // harus ikut total Y yang baru. Kunci Y (dipegang) lalu Y+1, urutan tahun naik.
+    recompute_next_year_carry_over(
+        &mut tx,
+        row.company_id,
+        row.user_id,
+        year,
+        time_zone,
+        Some(format!(
+            "Koreksi sisa cuti dibawa: saldo {year} beralih ke jatah penuh"
+        )),
+        now,
     )
     .await?;
     tx.commit().await?;
