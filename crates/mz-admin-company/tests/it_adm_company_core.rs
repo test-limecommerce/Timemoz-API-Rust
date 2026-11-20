@@ -495,7 +495,8 @@ async fn features_and_report_exports() {
         .await;
     r.assert_ok().assert_no_sql_error();
     assert_eq!(r.data()["isAgencyMode"], true);
-    assert_eq!(r.data()["warnings"], json!([]));
+    // PLAN_PRODUCT_MODULE_MISMATCH dihapus: PATCH fitur tidak lagi membawa `warnings`.
+    assert!(r.data().get("warnings").is_none());
     let r = app
         .post(&format!("/admin-company/{}/report-exports/reset", fx.uuid))
         .token(&owner)

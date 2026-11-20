@@ -1,7 +1,7 @@
 //! `AuthService.createOrganization` (`auth.service.ts:1760`) +
 //! `QuickstartService.initForCompany`.
 
-use mz_core::feature_modules::{flags_to_modules, invalidate_company};
+use mz_core::feature_modules::flags_to_modules;
 use mz_core::{ApiResult, AppState};
 use serde_json::{Value, json};
 use sqlx::PgConnection;
@@ -82,10 +82,10 @@ async fn create_organization_inner(
     let Some(company_id) = mz_core::company::find_company_id(&state.db, user_id).await? else {
         return Ok(json!({ "success": false, "message": "Company not found" }));
     };
+    // `modules` sengaja TIDAK ditulis ke kolom modul (Node 77e5a29): modul company
+    // ditentukan saat registrasi dan onboarding tidak mengubahnya. Pilihan itu hanya
+    // menentukan quickstart Sales di bawah.
     let modules = dto.modules();
-    let flags = modules
-        .as_ref()
-        .map(|m| (m.contains(&"TIME_TRACKING"), m.contains(&"SALES_TRACKER")));
     let website = column(&dto.website_url);
     let employees = column(&dto.register_total_employees);
     let time_zone = column(&dto.time_zone);
@@ -113,10 +113,6 @@ async fn create_organization_inner(
     // Zona waktu hanya saat pembuatan pertama.
     if is_first && let Some(v) = time_zone {
         qb.push(r#", "timeZone" = "#).push_bind(v);
-    }
-    if let Some((tt, st)) = flags {
-        qb.push(r#", "moduleTimeTrackingEnabled" = "#).push_bind(tt);
-        qb.push(r#", "moduleSalesTrackerEnabled" = "#).push_bind(st);
     }
     qb.push(" WHERE id = ").push_bind(company_id);
     qb.push(
@@ -169,9 +165,6 @@ async fn create_organization_inner(
     }
     tx.commit().await?;
 
-    if modules.is_some() {
-        invalidate_company(state, company_id);
-    }
     let module_list: Vec<&'static str> = flags_to_modules(
         updated.module_time_tracking_enabled,
         updated.module_sales_tracker_enabled,
