@@ -141,6 +141,32 @@ async fn view(state: &AppState, c: &FeatureRow) -> ApiResult<Map<String, Value>>
     })
 }
 
+/// Peringatan: modul menyala yang tak dijual paket sekarang.
+async fn warnings(state: &AppState, c: &FeatureRow) -> ApiResult<Vec<String>> {
+    let product = current_sub(&state.db, c.id).await?.and_then(|s| {
+        s.tier()
+            .and_then(|t| t.get("productType"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    });
+    let Some(product) = product else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    // `productTypeToModuleFlags`.
+    if c.sales && product == "TIME" {
+        out.push(format!(
+            "PLAN_PRODUCT_MODULE_MISMATCH: Plan product is {product} but Sales Tracker is enabled"
+        ));
+    }
+    if c.time && product == "SALES" {
+        out.push(format!(
+            "PLAN_PRODUCT_MODULE_MISMATCH: Plan product is {product} but Time Tracking is enabled"
+        ));
+    }
+    Ok(out)
+}
+
 /// Node: src/admin-company/features/company-features.controller.ts:42 (`GET /admin-company/:uuid/features`)
 pub async fn h_get(
     State(state): State<AppState>,
@@ -349,7 +375,9 @@ pub async fn h_patch(
         .await;
     }
 
-    Ok(Json(ok(Value::Object(view(&state, &updated).await?))))
+    let mut view = view(&state, &updated).await?;
+    view.insert("warnings".into(), json!(warnings(&state, &updated).await?));
+    Ok(Json(ok(Value::Object(view))))
 }
 
 /// Node: src/admin-company/features/company-features.controller.ts:74 (`POST /admin-company/:uuid/report-exports/reset`)

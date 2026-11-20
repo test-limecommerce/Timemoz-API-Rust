@@ -951,8 +951,10 @@ async fn create_organization() {
     r.assert_ok();
     assert_eq!(r.data()["name"], "Org Baru");
     assert_eq!(r.data()["hasCreateOrgnanization"], json!(true));
-    // Node 77e5a29: `modules` tidak ditulis ke kolom modul — paket TIME tetap Time Tracking saja.
-    assert_eq!(r.data()["modules"], json!(["TIME_TRACKING"]));
+    assert_eq!(
+        r.data()["modules"],
+        json!(["TIME_TRACKING", "SALES_TRACKER"])
+    );
     let (tz, tt, st): (Option<String>, bool, bool) = sqlx::query_as(
         r#"SELECT "timeZone", "moduleTimeTrackingEnabled", "moduleSalesTrackerEnabled" FROM company WHERE id = $1"#,
     )
@@ -961,7 +963,7 @@ async fn create_organization() {
     .await
     .unwrap();
     assert_eq!(tz.as_deref(), Some("Asia/Jakarta"));
-    assert!(tt && !st);
+    assert!(tt && st);
     let q: i64 = app
         .scalar(&format!(
             r#"SELECT COUNT(*) FROM "companyQuickstart" WHERE "companyId" = {}"#,
